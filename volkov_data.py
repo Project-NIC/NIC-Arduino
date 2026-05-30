@@ -220,7 +220,7 @@ class VolkovData:
             ("9", "PullDn"), ("10", "Quit"),
         ]
         n = len(labels)
-        edge_gap = 3   # black gap BETWEEN pairs (before each number)
+        edge_gap = 2   # black gap BETWEEN pairs (before each number)
         num_gap = 1    # small gap: number → its own box (closer to its box than the next)
         nums_len = sum(len(num) for num, _ in labels)
         # remaining width is split equally across the 10 cyan label boxes
