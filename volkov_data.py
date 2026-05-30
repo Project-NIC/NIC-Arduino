@@ -219,16 +219,22 @@ class VolkovData:
             ("5", "Copy"), ("6", "RenMov"), ("7", "Mkdir"), ("8", "Delete"),
             ("9", "PullDn"), ("10", "Quit"),
         ]
-        cell = width // len(labels)
+        n = len(labels)
+        gap = 1  # spacing between cells, for readability
+        cell = (width - gap * (n - 1)) // n  # equal-width cells
         frags: Fragments = []
         total = 0
-        for num, label in labels:
+        for i, (num, label) in enumerate(labels):
+            # number on black, then a space, then the label field on cyan
             frags.append(("class:fkey-num", num))
-            lab = fit(label, max(0, cell - len(num)))
-            frags.append(("class:fkey-label", lab))
-            total += len(num) + len(lab)
+            field = fit(" " + label, max(0, cell - len(num)))
+            frags.append(("class:fkey-label", field))
+            total += len(num) + len(field)
+            if i < n - 1:  # gap between cells (on the bar background)
+                frags.append(("class:fkey-gap", " " * gap))
+                total += gap
         if total < width:
-            frags.append(("class:fkey-label", " " * (width - total)))
+            frags.append(("class:fkey-gap", " " * (width - total)))
         return frags
 
     # ── app wiring ─────────────────────────────────────────────────────────
@@ -247,6 +253,7 @@ class VolkovData:
             "cmdline": "bg:#000000 #cccccc",
             "fkey-num": "bg:#000000 #ffffff",
             "fkey-label": "bg:#00aaaa #000000",
+            "fkey-gap": "bg:#000000",
         })
         return Application(
             layout=Layout(Window(content=VCControl(self))),
