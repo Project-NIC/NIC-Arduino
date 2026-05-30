@@ -1,0 +1,232 @@
+/*
+ * nic_mla_format.h  —  NIC-MLA: shared format definition v2 (header-only)
+ *
+ * Common to both C libraries:
+ *   • nic_mla_write.{h,c}  — write-only, for ATmega / small Arduino
+ *   • nic_mla.{h,c}        — complete, for ARM Arduino / PC (Python port)
+ *
+ * Everything is serialized EXPLICITLY byte by byte in little-endian — no
+ * reliance on the C struct layout (padding/endianness). This guarantees the
+ * binary format is identical across AVR / ARM / PC and the Python reference.
+ *
+ * MIT  |  ★ Viva La Resistánce ★
+ */
+#ifndef NIC_MLA_FORMAT_H
+#define NIC_MLA_FORMAT_H
+
+#include <stdint.h>
+#include <string.h>
+
+/* ── Format constants ───────────────────────────────────────────────────── */
+#define MLA_VERSION         2
+#define MLA_PREFIX_SIZE     512u
+#define MLA_LOG_REC_SIZE    24u
+#define MLA_PFX_HDR_SIZE    34u      /* structured part of the prefix (no padding) */
+
+#define MLA_DATA_MAGIC0     0xABu
+#define MLA_DATA_MAGIC1     0xCDu
+
+/* flags (bits 0-1 = CRC mode) */
+#define MLA_CRC_NONE        0
+#define MLA_CRC_DATA        1
+#define MLA_CRC_FULL        2
+
+/* log record state (byte 20, OUTSIDE the CRC) */
+#define MLA_FLAG_LIVE       0xFFu
+#define MLA_FLAG_ABANDONED  0x00u
+
+/* rec_type: low nibble = encoding, high nibble = class */
+#define MLA_ENC_RAW         0x0u
+#define MLA_ENC_DELTA       0x1u
+#define MLA_ENC_KEYFRAME    0x2u
+#define MLA_ENC_TEXT        0x3u
+#define MLA_CLASS_MEASURE   0x00u
+#define MLA_CLASS_EVENT     0x10u
+#define MLA_CLASS_CONFIG    0x20u
+#define MLA_CLASS_CHECKPT   0xF0u
+#define MLA_REC_CHECKPOINT  MLA_CLASS_CHECKPT
+
+/* ── Index region (host-side time/station skip-table) ─────────────────────── */
+/* Optional region reserved between the prefix and the data, at
+ * [MLA_PREFIX_SIZE, data_base). A flat append-only array of 12 B anchors; one
+ * is written per checkpoint. Pure speed-up — absent (data_base == prefix) means
+ * "just scan". status lives outside any CRC (0xFF→0xA5 to write, 0xA5→0x00 to
+ * invalidate; both are 1→0 only, so NOR-friendly). */
+#define MLA_IDX_REC_SIZE    12u
+#define MLA_IDX_UNUSED      0xFFu   /* slot never written (fresh 0xFF) */
+#define MLA_IDX_LIVE        0xA5u   /* valid anchor */
+#define MLA_IDX_DEAD        0x00u   /* invalidated (zeroed) */
+
+/* return codes */
+#define MLA_OK              0
+#define MLA_E_IO            (-1)
+#define MLA_E_FULL          (-2)
+#define MLA_E_BADFMT        (-3)
+#define MLA_E_RANGE         (-4)
+#define MLA_E_NOTFOUND      (-5)
+#define MLA_E_NOSUP         (-6)
+
+/* ── HAL — 4 functions, logical offsets (0 .. file_size-1) ───────────────── */
+typedef struct {
+    int      (*read)(void *ctx, uint32_t off, void *buf, uint16_t n);   /* 0=OK */
+    int      (*write)(void *ctx, uint32_t off, const void *buf, uint16_t n);
+    void     (*sync)(void *ctx);
+    uint32_t (*size)(void *ctx);
+    void     *ctx;
+} mla_hal_t;
+
+/* ── Little-endian helpers ──────────────────────────────────────────────── */
+static inline void mla_put_u16(uint8_t *p, uint16_t v) { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); }
+static inline void mla_put_u32(uint8_t *p, uint32_t v) {
+    p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24);
+}
+static inline uint16_t mla_get_u16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1]<<8)); }
+static inline uint32_t mla_get_u32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24);
+}
+
+/* ── CRC-16 / CCITT-FALSE  (poly 0x1021, init 0xFFFF) ───────────────────── */
+/* Incremental variant — allows streaming without a large buffer (AVR). */
+static inline uint16_t mla_crc16_ex(uint16_t crc, const uint8_t *data, uint16_t len) {
+    uint16_t i; uint8_t b;
+    for (i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (b = 0; b < 8; b++)
+            crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u) : (uint16_t)(crc << 1);
+    }
+    return crc;
+}
+static inline uint16_t mla_crc16(const uint8_t *data, uint16_t len) {
+    return mla_crc16_ex(0xFFFFu, data, len);
+}
+
+/* ── LOG record (24 B) ──────────────────────────────────────────────────── */
+typedef struct {
+    uint32_t timestamp;   /* [0]  */
+    uint32_t offset;      /* [4]  logical offset of the data block */
+    uint16_t station;     /* [8]  */
+    uint16_t channel;     /* [10] */
+    uint16_t seq;         /* [12] */
+    uint8_t  rec_type;    /* [14] */
+    uint16_t length;      /* [15] */
+    uint16_t kf_back;     /* [17] */
+    uint8_t  reserved;    /* [19] */
+    uint8_t  flags;       /* [20] OUTSIDE the CRC */
+} mla_log_t;
+
+/* Serialize a log record into 24 B (flags+pad outside the CRC; pad=0xFF). */
+static inline void mla_log_build(uint8_t out[MLA_LOG_REC_SIZE], const mla_log_t *r) {
+    mla_put_u32(out + 0,  r->timestamp);
+    mla_put_u32(out + 4,  r->offset);
+    mla_put_u16(out + 8,  r->station);
+    mla_put_u16(out + 10, r->channel);
+    mla_put_u16(out + 12, r->seq);
+    out[14] = r->rec_type;
+    mla_put_u16(out + 15, r->length);
+    mla_put_u16(out + 17, r->kf_back);
+    out[19] = r->reserved;
+    out[20] = r->flags;          /* OUTSIDE the CRC */
+    out[21] = 0xFF;              /* pad, OUTSIDE the CRC */
+    mla_put_u16(out + 22, mla_crc16(out, 20));
+}
+
+/* Deserialize; returns 1 if the CRC matches, otherwise 0. */
+static inline int mla_log_parse(const uint8_t in[MLA_LOG_REC_SIZE], mla_log_t *r) {
+    r->timestamp = mla_get_u32(in + 0);
+    r->offset    = mla_get_u32(in + 4);
+    r->station   = mla_get_u16(in + 8);
+    r->channel   = mla_get_u16(in + 10);
+    r->seq       = mla_get_u16(in + 12);
+    r->rec_type  = in[14];
+    r->length    = mla_get_u16(in + 15);
+    r->kf_back   = mla_get_u16(in + 17);
+    r->reserved  = in[19];
+    r->flags     = in[20];
+    return mla_crc16(in, 20) == mla_get_u16(in + 22);
+}
+
+static inline int      mla_log_is_live(const mla_log_t *r)       { return r->flags == MLA_FLAG_LIVE; }
+static inline int      mla_log_is_abandoned(const mla_log_t *r)  { return r->flags == MLA_FLAG_ABANDONED; }
+static inline int      mla_log_is_checkpoint(const mla_log_t *r) { return (r->rec_type & 0xF0u) == MLA_CLASS_CHECKPT; }
+static inline uint32_t mla_log_block_end(const mla_log_t *r)     { return r->offset + 2u + r->length + 2u; }
+
+/* ── Index anchor (12 B) ────────────────────────────────────────────────── */
+typedef struct {
+    uint32_t timestamp;   /* [0]  measurement time at the anchor's record */
+    uint32_t slot;        /* [4]  log slot index to jump to */
+    uint16_t station;     /* [8]  station hint */
+    uint8_t  status;      /* [10] MLA_IDX_UNUSED / LIVE / DEAD */
+    uint8_t  reserved;    /* [11] 0xFF */
+} mla_idx_t;
+
+static inline void mla_idx_build(uint8_t out[MLA_IDX_REC_SIZE], const mla_idx_t *a) {
+    mla_put_u32(out + 0, a->timestamp);
+    mla_put_u32(out + 4, a->slot);
+    mla_put_u16(out + 8, a->station);
+    out[10] = a->status;
+    out[11] = 0xFF;
+}
+static inline void mla_idx_parse(const uint8_t in[MLA_IDX_REC_SIZE], mla_idx_t *a) {
+    a->timestamp = mla_get_u32(in + 0);
+    a->slot      = mla_get_u32(in + 4);
+    a->station   = mla_get_u16(in + 8);
+    a->status    = in[10];
+    a->reserved  = in[11];
+}
+
+/* ── Prefix (512 B) — structured header [0..33] ─────────────────────────── */
+typedef struct {
+    uint8_t  version;
+    uint8_t  cluster_shift;
+    uint8_t  log_rec_size;
+    uint8_t  flags;
+    uint32_t file_size;
+    uint32_t phys_addr;       /* only the low 32 bits are supported (FAT/POSIX=0) */
+    uint8_t  container_kind;
+    uint16_t file_seq;
+    uint8_t  keyframe_intv;
+    uint8_t  enc_caps;
+    uint32_t data_base;
+    uint32_t region_end;
+    uint8_t  checkpoint_shift;
+} mla_prefix_t;
+
+/* Fill the structured prefix header (34 B). magic 'M','L','A',0. */
+static inline void mla_prefix_build_hdr(uint8_t hdr[MLA_PFX_HDR_SIZE], const mla_prefix_t *p) {
+    hdr[0]='M'; hdr[1]='L'; hdr[2]='A'; hdr[3]=0;
+    hdr[4]=p->version;
+    hdr[5]=p->cluster_shift;
+    hdr[6]=p->log_rec_size;
+    hdr[7]=p->flags;
+    mla_put_u32(hdr + 8,  p->file_size);
+    mla_put_u32(hdr + 12, p->phys_addr);   /* low 4 B */
+    mla_put_u32(hdr + 16, 0);              /* high 4 B of phys_addr = 0 */
+    hdr[20]=p->container_kind;
+    mla_put_u16(hdr + 21, p->file_seq);
+    hdr[23]=p->keyframe_intv;
+    hdr[24]=p->enc_caps;
+    mla_put_u32(hdr + 25, p->data_base);
+    mla_put_u32(hdr + 29, p->region_end);
+    hdr[33]=p->checkpoint_shift;
+}
+
+/* Parse the structured header; returns 1 if magic+version match. */
+static inline int mla_prefix_parse_hdr(const uint8_t hdr[MLA_PFX_HDR_SIZE], mla_prefix_t *p) {
+    if (hdr[0]!='M' || hdr[1]!='L' || hdr[2]!='A' || hdr[3]!=0) return 0;
+    p->version          = hdr[4];
+    p->cluster_shift    = hdr[5];
+    p->log_rec_size     = hdr[6];
+    p->flags            = hdr[7];
+    p->file_size        = mla_get_u32(hdr + 8);
+    p->phys_addr        = mla_get_u32(hdr + 12);
+    p->container_kind   = hdr[20];
+    p->file_seq         = mla_get_u16(hdr + 21);
+    p->keyframe_intv    = hdr[23];
+    p->enc_caps         = hdr[24];
+    p->data_base        = mla_get_u32(hdr + 25);
+    p->region_end       = mla_get_u32(hdr + 29);
+    p->checkpoint_shift = hdr[33];
+    return 1;
+}
+
+#endif /* NIC_MLA_FORMAT_H */
