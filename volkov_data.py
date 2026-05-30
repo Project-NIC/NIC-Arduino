@@ -227,7 +227,7 @@ class VolkovData:
         for i, (num, label) in enumerate(labels):
             # number on black, then a space, then the label field on cyan
             frags.append(("class:fkey-num", num))
-            field = fit(" " + label, max(0, cell - len(num)))
+            field = fit("   " + label, max(0, cell - len(num)))  # gap: number→label
             frags.append(("class:fkey-label", field))
             total += len(num) + len(field)
             if i < n - 1:  # gap between cells (on the bar background)
