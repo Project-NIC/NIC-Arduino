@@ -199,6 +199,8 @@ class VolkovData:
                 text = fit(" " + e.name + mark, inner)
                 if active and i == p.selected:
                     style = "class:sel"
+                elif e.kind == "record" and not e.meta.get("healthy", True):
+                    style = "class:bad"   # damaged record flagged with '*'
                 elif e.kind in ("dir", "updir", "mla"):
                     style = "class:dir"
                 elif e.kind == "record":
@@ -244,8 +246,8 @@ class VolkovData:
         return [("class:cmdline", fit(self.panel.backend.location + ">", width))]
 
     def _fkeybar(self, width: int) -> Fragments:
-        labels = [("1", "Info"), ("2", "Info"), ("3", "View"), ("4", "Edit"),
-                  ("5", "Copy"), ("6", "RenMov"), ("7", "Mkdir"), ("8", "Delete"),
+        labels = [("1", "Info"), ("2", "Repair"), ("3", "View"), ("4", "Values"),
+                  ("5", "Copy"), ("6", "CSV/Mv"), ("7", "Mkdir"), ("8", "Delete"),
                   ("9", "Menu"), ("10", "Quit")]
         n = len(labels)
         edge_gap, num_gap = 2, 1
@@ -364,9 +366,9 @@ class VolkovData:
         return out
 
     # ── actions ───────────────────────────────────────────────────────────
-    def _do_view(self) -> None:
+    def _do_view(self, with_values: bool = False) -> None:
         cur = self.panel.current
-        if cur is None or cur.is_container:
+        if cur is None or (cur.is_container and cur.kind != "mla"):
             return
         try:
             data = self.panel.backend.read(cur)
@@ -378,11 +380,17 @@ class VolkovData:
             try:
                 for k, v in self.panel.backend.info(cur):
                     lines.append(f"{k}: {v}")
-                lines.append("─" * 40)
             except vc.BackendError:
                 pass
+            if with_values:  # F4: decoded value via the conversion table
+                try:
+                    lines.append(f"Value: {self.panel.backend.decode_value(cur)}")
+                except Exception:
+                    pass
+            lines.append("─" * 40)
         lines += self._format_view(data)
-        self.overlay = ("view", cur.name, lines, 0)
+        title = ("Values: " if with_values else "") + cur.name
+        self.overlay = ("view", title, lines, 0)
 
     @staticmethod
     def _format_view(data: bytes) -> list[str]:
@@ -413,13 +421,27 @@ class VolkovData:
             return
         self.overlay = ("info", "Info", rows)
 
-    def _do_writes_info(self) -> None:
-        """F2: inside MLA → summary of the writes (container); else → file info."""
+    def _do_repair(self) -> None:
+        """F2: inside MLA → check the file and report damaged slots; else → file info."""
         be = self.panel.backend
         if isinstance(be, vc.MlaBackend):
-            self.overlay = ("info", "MLA writes", be._container_info())
+            self.overlay = ("info", "Repair / check", be.repair_info())
         else:
             self._do_info()
+
+    def _do_f6(self) -> None:
+        """F6: inside MLA → export whole container to CSV; else → rename."""
+        be = self.panel.backend
+        if isinstance(be, vc.MlaBackend):
+            name = be.csv_name()
+            exists = self.other.backend.exists(name)
+            msg = (f"Export all records to CSV\n  to  {self.other.backend.location}"
+                   f"\n  as  '{name}'")
+            if exists:
+                msg += f"\n\n! '{name}' exists and will be OVERWRITTEN."
+            self.overlay = ("confirm", "Export CSV", msg, "csv")
+        else:
+            self._do_rename()
 
     def _do_mkdir(self) -> None:
         self.overlay = ("input", "Make directory", "New directory name:", "", "mkdir")
@@ -491,6 +513,10 @@ class VolkovData:
                 self.panel.reload()
             elif action == "copy":
                 self._copy_now()
+            elif action == "csv":
+                be = self.panel.backend
+                self.other.backend.put_file(be.csv_name(), be.to_csv())
+                self.other.reload()
         except vc.BackendError as exc:
             self.overlay = ("message", "Error", str(exc))
 
@@ -506,6 +532,7 @@ class VolkovData:
             "file": "bg:#0000aa #00cccc",
             "dir": "bg:#0000aa #ffffff bold",
             "rec": "bg:#0000aa #55ff55",
+            "bad": "bg:#0000aa #ff5555 bold",
             "sel": "bg:#00aaaa #000000 bold",
             "info": "bg:#0000aa #00cccc",
             "cmdline": "bg:#000000 #cccccc",
@@ -566,19 +593,19 @@ class VolkovData:
         def _(e): self._do_info()
 
         @kb.add("f2", filter=no_overlay)
-        def _(e): self._do_writes_info()
+        def _(e): self._do_repair()
 
         @kb.add("f3", filter=no_overlay)
         def _(e): self._do_view()
 
         @kb.add("f4", filter=no_overlay)
-        def _(e): self.overlay = ("message", "Edit", "Editing is not available (by design).")
+        def _(e): self._do_view(with_values=True)
 
         @kb.add("f5", filter=no_overlay)
         def _(e): self._do_copy()
 
         @kb.add("f6", filter=no_overlay)
-        def _(e): self._do_rename()
+        def _(e): self._do_f6()
 
         @kb.add("f7", filter=no_overlay)
         def _(e): self._do_mkdir()
