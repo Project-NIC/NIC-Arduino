@@ -1,11 +1,12 @@
 # Volkov Data
 
 A cross-platform, two-pane file manager in the style of **Volkov Commander**,
-written in Python on **prompt_toolkit**. It browses and (later) edits data logged
-in the **NIC-MLA** container format.
+written in Python on **prompt_toolkit**. It browses the local filesystem and
+steps *inside* **NIC-MLA** containers, showing each logged record as a file.
 
-> Status: **early prototype** — a minimal two-pane browser is on screen; file
-> operations and the MLA codec are not wired yet.
+> Status: **working** — two-pane browsing, file operations, file/record viewer,
+> and an MLA backend that browses records. All logic lives in `volkov_core/`
+> (GUI-free) so it can be reused headless.
 
 ## Run
 
@@ -14,13 +15,33 @@ pip install -r requirements.txt
 python3 volkov_data.py [left_dir] [right_dir]
 ```
 
-**Keys:** `Tab` switch panel · `↑/↓ PgUp/PgDn Home/End` move · `Enter` open dir ·
-`F10` / `q` / `Ctrl-Q` quit. (The F1–F9 bar is shown but not yet wired.)
+**Keys**
+
+| Key | Action |
+|---|---|
+| `Tab` | switch panel |
+| `↑/↓ PgUp/PgDn Home/End` | move cursor |
+| `Enter` | open dir / step into `.mla` / go up (`..`) |
+| `F1` / `F2` | info about the selected item / record |
+| `F3` | view file or record payload (text/hex) |
+| `F5` | copy selected file to the other panel |
+| `F6` | rename |
+| `F7` | make directory |
+| `F8` | delete (with confirmation) |
+| `F10` / `q` / `Ctrl-Q` | quit · `Esc` closes any overlay |
+
+Press `Enter` on `samples/weather.mla` to step inside and browse its records.
 
 ## Layout
 
 ```
-volkov_data.py          minimal two-pane prototype (single file, for now)
+volkov_data.py           prompt_toolkit GUI (thin shell over volkov_core)
+volkov_core/             GUI-free logic — reusable headless
+  backend.py               storage-backend abstraction (Entry / Backend)
+  local.py                 LocalBackend — host filesystem
+  mla.py                   MlaBackend — records inside an .mla as "files"
+samples/make_sample.py   generator for a sample weather datalogger file
+samples/weather.mla      committed sample (~549 records) to develop against
 third_party/nic_mla/     vendored NIC-MLA — canonical data format (Python + C + spec)
 docs/vc-reference/       original Volkov Commander sources (BSD-2) as a UI reference
 ```

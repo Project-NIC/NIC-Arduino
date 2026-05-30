@@ -2,30 +2,41 @@
 """
 Volkov Data — two-pane file manager (Volkov Commander look).
 
-Renders the classic VC/NC screen: a top menu bar with a clock, two
-double-bordered cyan-on-blue panels (path in the frame title, a "Name" header,
-a bottom info line with the selected item's date/time), a command line, and the
-F1-F10 function-key bar.
+A thin prompt_toolkit shell over volkov_core: two bordered panels browse storage
+backends (the local filesystem, or the records inside an .mla container). All the
+real logic lives in volkov_core/, so it can be reused headless.
 
-Navigate the local filesystem: Tab switches panel, arrows/PgUp/PgDn/Home/End
-move, Enter descends. File operations and the MLA codec are not wired yet.
+Keys
+  Tab            switch active panel
+  ↑/↓ PgUp/PgDn Home/End   move cursor
+  Enter          open dir / step into .mla / go up via ".."
+  F1 Info        details about the selected item
+  F2 Info        (record info inside MLA — same as F1 there)
+  F3 View        view file / record payload (text or hex), ESC to close
+  F5 Copy        copy selected file to the other panel
+  F6 RenMov      rename the selected item
+  F7 Mkdir       create a directory
+  F8 Delete      delete the selected item (with confirmation)
+  F9 Menu        (placeholder)
+  F10/q/Ctrl-Q   quit
+  Esc            close any overlay/dialog
 
 Run:  python3 volkov_data.py [left_dir] [right_dir]
-Quit: F10 / q / Ctrl-Q
 """
 from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime
 
 from prompt_toolkit import Application
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.containers import Window
-from prompt_toolkit.layout.controls import UIControl, UIContent
+from prompt_toolkit.layout.controls import UIContent, UIControl
 from prompt_toolkit.styles import Style
+
+import volkov_core as vc
 
 # Box-drawing (double frame + single divider tee)
 TL, TR, BL, BR, H, V = "╔", "╗", "╚", "╝", "═", "║"
@@ -34,7 +45,7 @@ DL, DR, DH = "╟", "╢", "─"
 Fragments = list[tuple[str, str]]
 
 
-def fit(s: str, w: str | int) -> str:
+def fit(s: str, w) -> str:
     """Truncate or right-pad a string to exactly ``w`` columns."""
     w = int(w)
     if w <= 0:
@@ -42,40 +53,29 @@ def fit(s: str, w: str | int) -> str:
     return s[:w] if len(s) >= w else s + " " * (w - len(s))
 
 
-@dataclass
 class Panel:
-    """One file-browser pane: a directory and a cursor over its entries."""
+    """One pane: a storage backend + a cursor over its entries."""
 
-    path: str
-    selected: int = 0
-    scroll: int = 0
-    entries: list[tuple[str, bool]] = field(default_factory=list)  # (name, is_dir)
+    def __init__(self, backend: vc.Backend):
+        self.backend = backend
+        self.entries: list[vc.Entry] = []
+        self.selected = 0
+        self.scroll = 0
+        self.error = ""
+        self.reload()
 
-    def load(self) -> None:
-        """Read the directory: '..' first, then dirs, then files (each sorted)."""
-        self.path = os.path.abspath(self.path)
-        dirs: list[str] = []
-        files: list[str] = []
+    def reload(self) -> None:
         try:
-            with os.scandir(self.path) as it:
-                for e in it:
-                    try:
-                        (dirs if e.is_dir() else files).append(e.name)
-                    except OSError:
-                        files.append(e.name)
-        except OSError:
-            pass  # unreadable dir → just show '..'
-        entries: list[tuple[str, bool]] = []
-        if os.path.dirname(self.path) != self.path:
-            entries.append(("..", True))
-        entries += [(n, True) for n in sorted(dirs, key=str.lower)]
-        entries += [(n, False) for n in sorted(files, key=str.lower)]
-        self.entries = entries
-        self.selected = max(0, min(self.selected, len(entries) - 1))
+            self.entries = self.backend.list()
+            self.error = ""
+        except vc.BackendError as exc:
+            self.entries = [vc.Entry("..", True, kind="updir")]
+            self.error = str(exc)
+        self.selected = max(0, min(self.selected, len(self.entries) - 1))
         self.scroll = 0
 
     @property
-    def current(self) -> tuple[str, bool] | None:
+    def current(self) -> vc.Entry | None:
         if 0 <= self.selected < len(self.entries):
             return self.entries[self.selected]
         return None
@@ -85,58 +85,76 @@ class Panel:
             self.selected = max(0, min(self.selected + delta, len(self.entries) - 1))
 
     def enter(self) -> None:
-        """Descend into the selected directory (or '..')."""
         cur = self.current
-        if cur is None or not cur[1]:
+        if cur is None or not cur.is_container:
             return
-        name = cur[0]
-        prev = os.path.basename(self.path)
-        self.path = os.path.abspath(os.path.join(self.path, name))
-        self.load()
-        if name == "..":  # stepping up → land on the directory we came from
-            for i, (n, _) in enumerate(self.entries):
-                if n == prev:
+        try:
+            nxt = self.backend.enter(cur)
+        except vc.BackendError as exc:
+            self.error = str(exc)
+            return
+        if nxt is None:
+            return
+        prev_label = self.backend.label
+        if nxt is not self.backend:
+            self.backend.close()
+        self.backend = nxt
+        self.reload()
+        if cur.name == "..":  # land on the item we came from
+            for i, e in enumerate(self.entries):
+                if e.name == prev_label:
                     self.selected = i
                     break
 
 
 class VCControl(UIControl):
-    """Draws the whole VC screen; knows the terminal size via create_content."""
+    """Draws the whole VC screen; learns the terminal size in create_content."""
 
     def __init__(self, app: "VolkovData"):
         self.app = app
 
     def create_content(self, width: int, height: int) -> UIContent:
         lines = self.app.render(width, height)
-        return UIContent(
-            get_line=lambda i: lines[i],
-            line_count=len(lines),
-            show_cursor=False,
-        )
+        return UIContent(get_line=lambda i: lines[i],
+                         line_count=len(lines), show_cursor=False)
 
 
 class VolkovData:
     def __init__(self, left: str, right: str):
-        self.panels = [Panel(left), Panel(right)]
+        self.panels = [Panel(vc.LocalBackend(left)), Panel(vc.LocalBackend(right))]
         self.active = 0
-        for p in self.panels:
-            p.load()
+        # overlay state: None | ("info", rows) | ("view", title, lines, scroll)
+        #                | ("input", title, prompt, buffer, action)
+        #                | ("confirm", title, message, action)
+        #                | ("message", title, message)
+        self.overlay = None
         self.app = self._build_app()
+
+    @property
+    def panel(self) -> Panel:
+        return self.panels[self.active]
+
+    @property
+    def other(self) -> Panel:
+        return self.panels[self.active ^ 1]
 
     # ── full-screen render ─────────────────────────────────────────────────
     def render(self, width: int, height: int) -> list[Fragments]:
-        panels_h = max(6, height - 3)  # menu + cmdline + fkey bar take 3 rows
+        panels_h = max(6, height - 3)
         lw = width // 2
         rw = width - lw
         left = self._panel(self.panels[0], self.active == 0, lw, panels_h)
         right = self._panel(self.panels[1], self.active == 1, rw, panels_h)
         body = [l + r for l, r in zip(left, right)]
-        return [self._menubar(width), *body, self._cmdline(width), self._fkeybar(width)]
+        screen = [self._menubar(width), *body,
+                  self._cmdline(width), self._fkeybar(width)]
+        if self.overlay:
+            self._draw_overlay(screen, width, height)
+        return screen
 
     def _panel(self, p: Panel, active: bool, w: int, h: int) -> list[Fragments]:
         inner = w - 2
-        list_h = h - 5  # top, header, divider, info, bottom borders
-        # keep the cursor inside the viewport
+        list_h = h - 5
         if p.selected < p.scroll:
             p.scroll = p.selected
         elif p.selected >= p.scroll + list_h:
@@ -146,52 +164,49 @@ class VolkovData:
         bd = "class:border-act" if active else "class:border"
         lines: list[Fragments] = []
 
-        # top border with the path as a centered title
-        title = p.path
+        title = p.backend.location
         if len(title) > inner - 4:
             title = "…" + title[-(inner - 5):]
         disp = fit(" " + title + " ", min(len(title) + 2, inner))
         fill = inner - len(disp)
-        lpad, rpad = fill // 2, fill - fill // 2
-        tstyle = "class:title-act" if active else "class:title"
-        lines.append([(bd, TL + H * lpad), (tstyle, disp), (bd, H * rpad + TR)])
-
-        # header
+        lp, rp = fill // 2, fill - fill // 2
+        ts = "class:title-act" if active else "class:title"
+        lines.append([(bd, TL + H * lp), (ts, disp), (bd, H * rp + TR)])
         lines.append([(bd, V), ("class:header", fit(" Name", inner)), (bd, V)])
 
-        # file rows
         for row in range(list_h):
             i = p.scroll + row
             if i < len(p.entries):
-                name, is_dir = p.entries[i]
-                text = fit(" " + name, inner)
+                e = p.entries[i]
+                mark = "/" if e.is_container and e.name != ".." else ""
+                text = fit(" " + e.name + mark, inner)
                 if active and i == p.selected:
                     style = "class:sel"
+                elif e.kind in ("dir", "updir", "mla"):
+                    style = "class:dir"
+                elif e.kind == "record":
+                    style = "class:rec"
                 else:
-                    style = "class:dir" if is_dir else "class:file"
+                    style = "class:file"
             else:
                 style, text = "class:file", " " * inner
             lines.append([(bd, V), (style, text), (bd, V)])
 
-        # divider + info line (selected item's name + date/time)
         lines.append([(bd, DL + DH * inner + DR)])
-        lines.append([(bd, V), ("class:info", self._info(p, inner)), (bd, V)])
-        # bottom border
+        lines.append([(bd, V), ("class:info", self._info_line(p, inner)), (bd, V)])
         lines.append([(bd, BL + H * inner + BR)])
         return lines
 
-    def _info(self, p: Panel, inner: int) -> str:
+    def _info_line(self, p: Panel, inner: int) -> str:
+        if p.error:
+            return fit(" ! " + p.error, inner)
         cur = p.current
         if not cur:
             return " " * inner
-        name, is_dir = cur
         right = ""
-        try:
-            st = os.stat(os.path.join(p.path, name))
-            right = datetime.fromtimestamp(st.st_mtime).strftime("%d.%m.%y %H:%M")
-        except OSError:
-            pass
-        left = "▶UP--DIR◀" if name == ".." else name
+        if cur.mtime:
+            right = datetime.fromtimestamp(cur.mtime).strftime("%d.%m.%y %H:%M")
+        left = "▶UP--DIR◀" if cur.name == ".." else cur.name
         field_w = inner - 2 - len(right) - 1
         return " " + fit(left, field_w) + " " + right + " "
 
@@ -204,39 +219,220 @@ class VolkovData:
             frags.append(("class:menu", seg))
             used += len(seg)
         clock = datetime.now().strftime("%H:%M")
-        fill = max(0, width - used - len(clock) - 1)
-        frags.append(("class:menu", " " * fill))
+        frags.append(("class:menu", " " * max(0, width - used - len(clock) - 1)))
         frags.append(("class:menu", clock + " "))
         return frags
 
     def _cmdline(self, width: int) -> Fragments:
-        prompt = self.panels[self.active].path + ">"
-        return [("class:cmdline", fit(prompt, width))]
+        return [("class:cmdline", fit(self.panel.backend.location + ">", width))]
 
     def _fkeybar(self, width: int) -> Fragments:
-        labels = [
-            ("1", "Help"), ("2", "Menu"), ("3", "View"), ("4", "Edit"),
-            ("5", "Copy"), ("6", "RenMov"), ("7", "Mkdir"), ("8", "Delete"),
-            ("9", "PullDn"), ("10", "Quit"),
-        ]
+        labels = [("1", "Info"), ("2", "Info"), ("3", "View"), ("4", "Edit"),
+                  ("5", "Copy"), ("6", "RenMov"), ("7", "Mkdir"), ("8", "Delete"),
+                  ("9", "Menu"), ("10", "Quit")]
         n = len(labels)
-        edge_gap = 2   # black gap BETWEEN pairs (before each number)
-        num_gap = 1    # small gap: number → its own box (closer to its box than the next)
+        edge_gap, num_gap = 2, 1
         nums_len = sum(len(num) for num, _ in labels)
-        # remaining width is split equally across the 10 cyan label boxes
         fixed = nums_len + n * num_gap + (n + 1) * edge_gap
         box_w = max(1, (width - fixed) // n)
-        rem = max(0, width - fixed - box_w * n)  # leftover columns → widen first boxes
-
+        rem = max(0, width - fixed - box_w * n)
         frags: Fragments = []
         for i, (num, label) in enumerate(labels):
             w = box_w + (1 if i < rem else 0)
-            frags.append(("class:fkey-gap", " " * edge_gap))   # wide gap between pairs
-            frags.append(("class:fkey-num", num))              # number...
-            frags.append(("class:fkey-gap", " " * num_gap))    # ...small gap...
-            frags.append(("class:fkey-label", fit(" " + label, w)))  # ...to its box
-        frags.append(("class:fkey-gap", " " * edge_gap))       # trailing gap
+            frags.append(("class:fkey-gap", " " * edge_gap))
+            frags.append(("class:fkey-num", num))
+            frags.append(("class:fkey-gap", " " * num_gap))
+            frags.append(("class:fkey-label", fit(" " + label, w)))
+        frags.append(("class:fkey-gap", " " * edge_gap))
         return frags
+
+    # ── overlays ────────────────────────────────────────────────────────────
+    def _draw_overlay(self, screen: list[Fragments], width: int, height: int) -> None:
+        kind = self.overlay[0]
+        if kind == "view":
+            box_lines = self._render_view(width, height)
+            for i, ln in enumerate(box_lines):
+                if i < len(screen):
+                    screen[i] = ln
+            return
+        # centered dialog box for info/input/confirm/message
+        body = self._dialog_body()
+        bw = min(width - 4, max(40, max((len(s) for s, _ in body), default=40) + 4))
+        bh = len(body) + 2
+        top = max(0, (height - bh) // 2)
+        left = max(0, (width - bw) // 2)
+        bd = "class:dlg-border"
+        # top border with title
+        title = " " + self.overlay[1] + " "
+        fillw = bw - 2 - len(title)
+        lp = fillw // 2
+        self._overlay_row(screen, top, left,
+                          [(bd, TL + H * lp), ("class:dlg-title", title),
+                           (bd, H * (fillw - lp) + TR)], width)
+        for j, (text, st) in enumerate(body):
+            self._overlay_row(screen, top + 1 + j, left,
+                              [(bd, V), (st, fit(" " + text, bw - 2)), (bd, V)], width)
+        self._overlay_row(screen, top + bh - 1, left,
+                          [(bd, BL + H * (bw - 2) + BR)], width)
+
+    def _dialog_body(self) -> list[tuple[str, str]]:
+        kind = self.overlay[0]
+        if kind == "info":
+            rows = self.overlay[2]
+            return [(f"{k}: {v}", "class:dlg") for k, v in rows] + \
+                   [("", "class:dlg"), ("[ Esc / Enter to close ]", "class:dlg-dim")]
+        if kind == "input":
+            _, _title, prompt, buf, _action = self.overlay
+            return [(prompt, "class:dlg"),
+                    ("> " + buf + "_", "class:dlg-edit"),
+                    ("", "class:dlg"),
+                    ("[ Enter = OK   Esc = Cancel ]", "class:dlg-dim")]
+        if kind == "confirm":
+            return [(self.overlay[2], "class:dlg"), ("", "class:dlg"),
+                    ("[ Y = Yes   N / Esc = No ]", "class:dlg-dim")]
+        if kind == "message":
+            return [(self.overlay[2], "class:dlg"), ("", "class:dlg"),
+                    ("[ Esc / Enter to close ]", "class:dlg-dim")]
+        return []
+
+    def _overlay_row(self, screen, y, x, frags, width) -> None:
+        if not (0 <= y < len(screen)):
+            return
+        w = sum(len(t) for _, t in frags)
+        # build the row: keep left part of original, place box, keep right part
+        left_part = self._slice(screen[y], 0, x)
+        right_part = self._slice(screen[y], x + w, width)
+        screen[y] = left_part + frags + right_part
+
+    @staticmethod
+    def _slice(frags: Fragments, start: int, end: int) -> Fragments:
+        """Return the sub-fragments covering columns [start, end)."""
+        out: Fragments = []
+        col = 0
+        for style, text in frags:
+            seg_start, seg_end = col, col + len(text)
+            col = seg_end
+            a, b = max(seg_start, start), min(seg_end, end)
+            if a < b:
+                out.append((style, text[a - seg_start:b - seg_start]))
+        # pad if the row was shorter than 'end'
+        if col < end and start <= col:
+            out.append(("", " " * (end - max(col, start))))
+        return out
+
+    def _render_view(self, width: int, height: int) -> list[Fragments]:
+        _, title, vlines, scroll = self.overlay
+        bd = "class:view-border"
+        out: list[Fragments] = []
+        t = " " + title + " "
+        fillw = width - 2 - len(t)
+        out.append([(bd, TL + H * (fillw // 2)), ("class:view-title", t),
+                    (bd, H * (fillw - fillw // 2) + TR)])
+        view_h = height - 2
+        for i in range(view_h):
+            idx = scroll + i
+            line = vlines[idx] if idx < len(vlines) else ""
+            out.append([(bd, V), ("class:view", fit(" " + line, width - 2)), (bd, V)])
+        hint = " ↑/↓ PgUp/PgDn scroll   Esc close "
+        fillw = width - 2 - len(hint)
+        out.append([(bd, BL + H * (fillw // 2)), ("class:view-title", hint),
+                    (bd, H * (fillw - fillw // 2) + BR)])
+        return out
+
+    # ── actions ───────────────────────────────────────────────────────────
+    def _do_view(self) -> None:
+        cur = self.panel.current
+        if cur is None or cur.is_container:
+            return
+        try:
+            data = self.panel.backend.read(cur)
+        except vc.BackendError as exc:
+            self.overlay = ("message", "Error", str(exc))
+            return
+        self.overlay = ("view", cur.name, self._format_view(data), 0)
+
+    @staticmethod
+    def _format_view(data: bytes) -> list[str]:
+        # text if mostly printable, else hex dump
+        sample = data[:4096]
+        printable = sum(1 for b in sample if 9 <= b <= 13 or 32 <= b <= 126)
+        if sample and printable / len(sample) > 0.85:
+            try:
+                return data.decode("utf-8", "replace").splitlines() or ["<empty>"]
+            except Exception:
+                pass
+        lines = []
+        for off in range(0, len(data), 16):
+            chunk = data[off:off + 16]
+            hexs = " ".join(f"{b:02x}" for b in chunk)
+            text = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+            lines.append(f"{off:08x}  {hexs:<47}  {text}")
+        return lines or ["<empty>"]
+
+    def _do_info(self) -> None:
+        cur = self.panel.current
+        if cur is None:
+            return
+        try:
+            rows = self.panel.backend.info(cur)
+        except vc.BackendError as exc:
+            self.overlay = ("message", "Error", str(exc))
+            return
+        self.overlay = ("info", "Info", rows)
+
+    def _do_mkdir(self) -> None:
+        self.overlay = ("input", "Make directory", "New directory name:", "", "mkdir")
+
+    def _do_rename(self) -> None:
+        cur = self.panel.current
+        if cur is None or cur.name == "..":
+            return
+        self.overlay = ("input", "Rename", "New name:", cur.name, "rename")
+
+    def _do_delete(self) -> None:
+        cur = self.panel.current
+        if cur is None or cur.name == "..":
+            return
+        self.overlay = ("confirm", "Delete", f"Delete '{cur.name}' ?", "delete")
+
+    def _do_copy(self) -> None:
+        cur = self.panel.current
+        if cur is None or cur.is_container:
+            self.overlay = ("message", "Copy", "Select a file to copy.")
+            return
+        try:
+            data = self.panel.backend.read(cur)
+            self.other.backend.put_file(cur.name, data)
+            self.other.reload()
+        except vc.BackendError as exc:
+            self.overlay = ("message", "Error", str(exc))
+            return
+        self.overlay = ("message", "Copy", f"Copied '{cur.name}' to the other panel.")
+
+    def _commit_input(self) -> None:
+        _, _t, _p, buf, action = self.overlay
+        buf = buf.strip()
+        self.overlay = None
+        if not buf:
+            return
+        try:
+            if action == "mkdir":
+                self.panel.backend.mkdir(buf)
+            elif action == "rename":
+                self.panel.backend.rename(self.panel.current, buf)
+            self.panel.reload()
+        except vc.BackendError as exc:
+            self.overlay = ("message", "Error", str(exc))
+
+    def _commit_confirm(self) -> None:
+        action = self.overlay[3]
+        self.overlay = None
+        try:
+            if action == "delete":
+                self.panel.backend.delete(self.panel.current)
+                self.panel.reload()
+        except vc.BackendError as exc:
+            self.overlay = ("message", "Error", str(exc))
 
     # ── app wiring ─────────────────────────────────────────────────────────
     def _build_app(self) -> Application:
@@ -249,55 +445,139 @@ class VolkovData:
             "header": "bg:#0000aa #ffff55 bold",
             "file": "bg:#0000aa #00cccc",
             "dir": "bg:#0000aa #ffffff bold",
+            "rec": "bg:#0000aa #55ff55",
             "sel": "bg:#00aaaa #000000 bold",
             "info": "bg:#0000aa #00cccc",
             "cmdline": "bg:#000000 #cccccc",
             "fkey-num": "bg:#000000 #ffffff",
             "fkey-label": "bg:#00aaaa #000000",
             "fkey-gap": "bg:#000000",
+            # overlays
+            "dlg-border": "bg:#aaaaaa #000000",
+            "dlg-title": "bg:#aaaaaa #aa0000 bold",
+            "dlg": "bg:#aaaaaa #000000",
+            "dlg-dim": "bg:#aaaaaa #555555",
+            "dlg-edit": "bg:#000088 #ffffff",
+            "view-border": "bg:#0000aa #ffffff bold",
+            "view-title": "bg:#0000aa #ffff55 bold",
+            "view": "bg:#0000aa #cccccc",
         })
-        return Application(
-            layout=Layout(Window(content=VCControl(self))),
-            key_bindings=self._keys(),
-            style=style,
-            full_screen=True,
-            mouse_support=False,
-            refresh_interval=1.0,  # tick the clock
-        )
+        return Application(layout=Layout(Window(content=VCControl(self))),
+                           key_bindings=self._keys(), style=style,
+                           full_screen=True, mouse_support=False,
+                           refresh_interval=1.0)
 
     def _keys(self) -> KeyBindings:
         kb = KeyBindings()
-        panel = lambda: self.panels[self.active]
+        from prompt_toolkit.filters import Condition
+        in_overlay = Condition(lambda: self.overlay is not None)
+        no_overlay = ~in_overlay
+        typing = Condition(lambda: self.overlay is not None and self.overlay[0] == "input")
+        viewing = Condition(lambda: self.overlay is not None and self.overlay[0] == "view")
 
-        @kb.add("tab")
+        # ── navigation (only when no overlay) ──
+        @kb.add("tab", filter=no_overlay)
         def _(e): self.active ^= 1
 
-        @kb.add("up")
-        def _(e): panel().move(-1)
+        @kb.add("up", filter=no_overlay)
+        def _(e): self.panel.move(-1)
 
-        @kb.add("down")
-        def _(e): panel().move(1)
+        @kb.add("down", filter=no_overlay)
+        def _(e): self.panel.move(1)
 
-        @kb.add("pageup")
-        def _(e): panel().move(-10)
+        @kb.add("pageup", filter=no_overlay)
+        def _(e): self.panel.move(-15)
 
-        @kb.add("pagedown")
-        def _(e): panel().move(10)
+        @kb.add("pagedown", filter=no_overlay)
+        def _(e): self.panel.move(15)
 
-        @kb.add("home")
-        def _(e): panel().selected = 0
+        @kb.add("home", filter=no_overlay)
+        def _(e): self.panel.selected = 0
 
-        @kb.add("end")
-        def _(e): panel().selected = max(0, len(panel().entries) - 1)
+        @kb.add("end", filter=no_overlay)
+        def _(e): self.panel.selected = max(0, len(self.panel.entries) - 1)
 
-        @kb.add("enter")
-        def _(e): panel().enter()
+        @kb.add("enter", filter=no_overlay)
+        def _(e): self.panel.enter()
 
-        @kb.add("q")
+        # ── function keys ──
+        @kb.add("f1", filter=no_overlay)
+        @kb.add("f2", filter=no_overlay)
+        def _(e): self._do_info()
+
+        @kb.add("f3", filter=no_overlay)
+        def _(e): self._do_view()
+
+        @kb.add("f5", filter=no_overlay)
+        def _(e): self._do_copy()
+
+        @kb.add("f6", filter=no_overlay)
+        def _(e): self._do_rename()
+
+        @kb.add("f7", filter=no_overlay)
+        def _(e): self._do_mkdir()
+
+        @kb.add("f8", filter=no_overlay)
+        def _(e): self._do_delete()
+
+        @kb.add("q", filter=no_overlay)
         @kb.add("c-q")
-        @kb.add("f10")
-        @kb.add("c-c")
+        @kb.add("f10", filter=no_overlay)
         def _(e): e.app.exit()
+
+        # ── view scrolling ──
+        @kb.add("up", filter=viewing)
+        def _(e):
+            k, t, l, s = self.overlay
+            self.overlay = (k, t, l, max(0, s - 1))
+
+        @kb.add("down", filter=viewing)
+        def _(e):
+            k, t, l, s = self.overlay
+            self.overlay = (k, t, l, min(max(0, len(l) - 1), s + 1))
+
+        @kb.add("pageup", filter=viewing)
+        def _(e):
+            k, t, l, s = self.overlay
+            self.overlay = (k, t, l, max(0, s - 20))
+
+        @kb.add("pagedown", filter=viewing)
+        def _(e):
+            k, t, l, s = self.overlay
+            self.overlay = (k, t, l, min(max(0, len(l) - 1), s + 20))
+
+        # ── input typing ──
+        @kb.add("<any>", filter=typing)
+        def _(e):
+            ch = e.data
+            if ch and ch.isprintable():
+                k, t, p, buf, a = self.overlay
+                self.overlay = (k, t, p, buf + ch, a)
+
+        @kb.add("backspace", filter=typing)
+        def _(e):
+            k, t, p, buf, a = self.overlay
+            self.overlay = (k, t, p, buf[:-1], a)
+
+        # ── overlay confirm/close (order: specific filters first) ──
+        @kb.add("enter", filter=typing)
+        def _(e): self._commit_input()
+
+        @kb.add("enter", filter=in_overlay)
+        def _(e):
+            if self.overlay[0] in ("info", "message", "view"):
+                self.overlay = None
+
+        @kb.add("y", filter=Condition(
+            lambda: self.overlay is not None and self.overlay[0] == "confirm"))
+        def _(e): self._commit_confirm()
+
+        @kb.add("n", filter=Condition(
+            lambda: self.overlay is not None and self.overlay[0] == "confirm"))
+        def _(e): self.overlay = None
+
+        @kb.add("escape", filter=in_overlay)
+        def _(e): self.overlay = None
 
         return kb
 
