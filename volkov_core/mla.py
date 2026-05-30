@@ -89,7 +89,10 @@ class MlaBackend(Backend):
             name = "%05d  st%-3d ch%-3d %s" % (
                 rec.seq, rec.station, rec.channel, rec_type_name(rec.rec_type),
             )
-            export = "rec%05d_st%d_ch%d.bin" % (rec.seq, rec.station, rec.channel)
+            stamp = datetime.fromtimestamp(rec.timestamp).strftime("%Y%m%d_%H%M%S")
+            export = "rec%05d_%s_st%d_ch%d.bin" % (
+                rec.seq, stamp, rec.station, rec.channel,
+            )
             out.append(Entry(
                 name=name, is_container=False, size=rec.length,
                 mtime=rec.timestamp, kind="record",
@@ -147,15 +150,20 @@ class MlaBackend(Backend):
             rows.append(("Time range", f"{fr} … {to}"))
         return rows
 
-    # ── mutating — limited inside MLA (see design discussion) ────────────────
+    # ── mutating — intentionally limited inside MLA ───────────────────────────
+    # By design the MLA container is append-only and crash-safe: the GUI does not
+    # edit records in place (that would break CRCs / the two-pointer layout). You
+    # can always copy a record OUT (F5) and work on the copy. See design notes.
+    _RO = "MLA is append-only by design — copy a record out (F5) to work on it."
+
     def mkdir(self, name: str) -> None:
-        raise Unsupported("Cannot create entries inside an MLA container yet")
+        raise Unsupported(self._RO)
 
     def delete(self, entry: Entry) -> None:
-        raise Unsupported("Editing inside MLA is not supported yet")
+        raise Unsupported(self._RO)
 
     def rename(self, entry: Entry, new_name: str) -> None:
-        raise Unsupported("Editing inside MLA is not supported yet")
+        raise Unsupported(self._RO)
 
     def put_file(self, name: str, data: bytes) -> None:
-        raise Unsupported("Writing into MLA is not supported yet")
+        raise Unsupported(self._RO)

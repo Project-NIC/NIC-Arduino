@@ -67,7 +67,8 @@ class LocalBackend(Backend):
 
     # ── reading ─────────────────────────────────────────────────────────────
     def read(self, entry: Entry) -> bytes:
-        if entry.is_container:
+        # an .mla is "enterable" but still a real file on disk → copyable/readable
+        if entry.is_container and entry.kind != "mla":
             raise BackendError("Not a file")
         try:
             with open(os.path.join(self.path, entry.name), "rb") as f:

@@ -310,11 +310,13 @@ class VolkovData:
                     ("", "class:dlg"),
                     ("[ Enter = OK   Esc = Cancel ]", "class:dlg-dim")]
         if kind == "confirm":
-            return [(self.overlay[2], "class:dlg"), ("", "class:dlg"),
-                    ("[ Y = Yes   N / Esc = No ]", "class:dlg-dim")]
+            body = [(ln, "class:dlg") for ln in self.overlay[2].split("\n")]
+            return body + [("", "class:dlg"),
+                           ("[ Y = Yes   N / Esc = No ]", "class:dlg-dim")]
         if kind == "message":
-            return [(self.overlay[2], "class:dlg"), ("", "class:dlg"),
-                    ("[ Esc / Enter to close ]", "class:dlg-dim")]
+            body = [(ln, "class:dlg") for ln in self.overlay[2].split("\n")]
+            return body + [("", "class:dlg"),
+                           ("[ Esc / Enter to close ]", "class:dlg-dim")]
         return []
 
     def _overlay_row(self, screen, y, x, frags, width) -> None:
@@ -434,17 +436,21 @@ class VolkovData:
             return
         self.overlay = ("confirm", "Delete", f"Delete '{cur.name}' ?", "delete")
 
+    def _copyable(self, e) -> bool:
+        """A leaf file, or an .mla (enterable but still a real file on disk)."""
+        return e is not None and e.name != ".." and (not e.is_container or e.kind == "mla")
+
     def _do_copy(self) -> None:
         cur = self.panel.current
-        if cur is None or cur.is_container:
+        if not self._copyable(cur):
             self.overlay = ("message", "Copy", "Select a file to copy.")
             return
         dest_name = cur.meta.get("export_name", cur.name)
+        # VC-style copy dialog: confirm source → destination before doing it
+        msg = f"Copy  '{cur.name}'\n  to  {self.other.backend.location}\n  as  '{dest_name}'"
         if self.other.backend.exists(dest_name):
-            self.overlay = ("confirm", "Overwrite",
-                            f"'{dest_name}' exists. Overwrite?", "copy")
-            return
-        self._copy_now()
+            msg += f"\n\n! '{dest_name}' already exists and will be OVERWRITTEN."
+        self.overlay = ("confirm", "Copy", msg, "copy")
 
     def _copy_now(self) -> None:
         """Perform the actual copy of the selected item to the other panel."""
