@@ -221,7 +221,7 @@ class VolkovData:
         ]
         n = len(labels)
         edge_gap = 3   # black gap BETWEEN pairs (before each number)
-        num_gap = 0    # number sticks to its own box (VC style: "1Help")
+        num_gap = 1    # small gap: number → its own box (closer to its box than the next)
         nums_len = sum(len(num) for num, _ in labels)
         # remaining width is split equally across the 10 cyan label boxes
         fixed = nums_len + n * num_gap + (n + 1) * edge_gap
@@ -231,9 +231,10 @@ class VolkovData:
         frags: Fragments = []
         for i, (num, label) in enumerate(labels):
             w = box_w + (1 if i < rem else 0)
-            frags.append(("class:fkey-gap", " " * edge_gap))   # gap between pairs
+            frags.append(("class:fkey-gap", " " * edge_gap))   # wide gap between pairs
             frags.append(("class:fkey-num", num))              # number...
-            frags.append(("class:fkey-label", fit(" " + label, w)))  # ...stuck to its box
+            frags.append(("class:fkey-gap", " " * num_gap))    # ...small gap...
+            frags.append(("class:fkey-label", fit(" " + label, w)))  # ...to its box
         frags.append(("class:fkey-gap", " " * edge_gap))       # trailing gap
         return frags
 
