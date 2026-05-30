@@ -138,8 +138,14 @@ class VolkovData:
     def other(self) -> Panel:
         return self.panels[self.active ^ 1]
 
+    # minimum usable terminal size (below this the layout can't be drawn)
+    MIN_W = 60
+    MIN_H = 10
+
     # ── full-screen render ─────────────────────────────────────────────────
     def render(self, width: int, height: int) -> list[Fragments]:
+        if width < self.MIN_W or height < self.MIN_H:
+            return self._too_small(width, height)
         panels_h = max(6, height - 3)
         lw = width // 2
         rw = width - lw
@@ -151,6 +157,17 @@ class VolkovData:
         if self.overlay:
             self._draw_overlay(screen, width, height)
         return screen
+
+    def _too_small(self, width: int, height: int) -> list[Fragments]:
+        """Shown when the terminal is below the minimum usable size."""
+        msg = f"Terminal too small — need at least {self.MIN_W}x{self.MIN_H}"
+        rows: list[Fragments] = []
+        for y in range(max(1, height)):
+            if y == height // 2:
+                rows.append([("class:cmdline", fit(msg.center(width), width))])
+            else:
+                rows.append([("class:cmdline", " " * max(0, width))])
+        return rows
 
     def _panel(self, p: Panel, active: bool, w: int, h: int) -> list[Fragments]:
         inner = w - 2
@@ -274,6 +291,12 @@ class VolkovData:
                               [(bd, V), (st, fit(" " + text, bw - 2)), (bd, V)], width)
         self._overlay_row(screen, top + bh - 1, left,
                           [(bd, BL + H * (bw - 2) + BR)], width)
+        # drop shadow: one column down the right edge + a row under the box
+        sh = "class:shadow"
+        for r in range(1, bh):
+            if left + bw < width:
+                self._overlay_row(screen, top + r, left + bw, [(sh, " ")], width)
+        self._overlay_row(screen, top + bh, left + 1, [(sh, " " * bw)], width)
 
     def _dialog_body(self) -> list[tuple[str, str]]:
         kind = self.overlay[0]
@@ -400,14 +423,15 @@ class VolkovData:
         if cur is None or cur.is_container:
             self.overlay = ("message", "Copy", "Select a file to copy.")
             return
+        dest_name = cur.meta.get("export_name", cur.name)
         try:
             data = self.panel.backend.read(cur)
-            self.other.backend.put_file(cur.name, data)
+            self.other.backend.put_file(dest_name, data)
             self.other.reload()
         except vc.BackendError as exc:
             self.overlay = ("message", "Error", str(exc))
             return
-        self.overlay = ("message", "Copy", f"Copied '{cur.name}' to the other panel.")
+        self.overlay = ("message", "Copy", f"Copied to '{dest_name}' in the other panel.")
 
     def _commit_input(self) -> None:
         _, _t, _p, buf, action = self.overlay
@@ -458,6 +482,7 @@ class VolkovData:
             "dlg": "bg:#aaaaaa #000000",
             "dlg-dim": "bg:#aaaaaa #555555",
             "dlg-edit": "bg:#000088 #ffffff",
+            "shadow": "bg:#000000",
             "view-border": "bg:#0000aa #ffffff bold",
             "view-title": "bg:#0000aa #ffff55 bold",
             "view": "bg:#0000aa #cccccc",
@@ -508,6 +533,9 @@ class VolkovData:
         @kb.add("f3", filter=no_overlay)
         def _(e): self._do_view()
 
+        @kb.add("f4", filter=no_overlay)
+        def _(e): self.overlay = ("message", "Edit", "Editing is not available (by design).")
+
         @kb.add("f5", filter=no_overlay)
         def _(e): self._do_copy()
 
@@ -519,6 +547,9 @@ class VolkovData:
 
         @kb.add("f8", filter=no_overlay)
         def _(e): self._do_delete()
+
+        @kb.add("f9", filter=no_overlay)
+        def _(e): self.overlay = ("message", "Menu", "The pull-down menu is not implemented yet.")
 
         @kb.add("q", filter=no_overlay)
         @kb.add("c-q")
@@ -559,13 +590,16 @@ class VolkovData:
             k, t, p, buf, a = self.overlay
             self.overlay = (k, t, p, buf[:-1], a)
 
-        # ── overlay confirm/close (order: specific filters first) ──
-        @kb.add("enter", filter=typing)
-        def _(e): self._commit_input()
-
+        # ── overlay Enter: one handler dispatching on overlay type ──
+        # (prompt_toolkit runs the LAST matching binding, so keep this single.)
         @kb.add("enter", filter=in_overlay)
         def _(e):
-            if self.overlay[0] in ("info", "message", "view"):
+            kind = self.overlay[0]
+            if kind == "input":
+                self._commit_input()
+            elif kind == "confirm":
+                self._commit_confirm()
+            else:  # info / message / view
                 self.overlay = None
 
         @kb.add("y", filter=Condition(

@@ -89,10 +89,11 @@ class MlaBackend(Backend):
             name = "%05d  st%-3d ch%-3d %s" % (
                 rec.seq, rec.station, rec.channel, rec_type_name(rec.rec_type),
             )
+            export = "rec%05d_st%d_ch%d.bin" % (rec.seq, rec.station, rec.channel)
             out.append(Entry(
                 name=name, is_container=False, size=rec.length,
                 mtime=rec.timestamp, kind="record",
-                meta={"idx": i},
+                meta={"idx": i, "export_name": export},
             ))
         return out
 
