@@ -126,3 +126,6 @@ class LocalBackend(Backend):
                 f.write(data)
         except OSError as exc:
             raise BackendError(f"copy failed: {exc}") from exc
+
+    def exists(self, name: str) -> bool:
+        return os.path.exists(os.path.join(self.path, name))

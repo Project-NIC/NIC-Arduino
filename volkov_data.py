@@ -139,8 +139,8 @@ class VolkovData:
         return self.panels[self.active ^ 1]
 
     # minimum usable terminal size (below this the layout can't be drawn)
-    MIN_W = 60
-    MIN_H = 10
+    MIN_W = 100
+    MIN_H = 15
 
     # ── full-screen render ─────────────────────────────────────────────────
     def render(self, width: int, height: int) -> list[Fragments]:
@@ -251,16 +251,15 @@ class VolkovData:
         edge_gap, num_gap = 2, 1
         nums_len = sum(len(num) for num, _ in labels)
         fixed = nums_len + n * num_gap + (n + 1) * edge_gap
-        box_w = max(1, (width - fixed) // n)
-        rem = max(0, width - fixed - box_w * n)
+        box_w = max(1, (width - fixed) // n)  # every label box is the SAME width
+        rem = max(0, width - fixed - box_w * n)  # leftover columns → trailing gap
         frags: Fragments = []
-        for i, (num, label) in enumerate(labels):
-            w = box_w + (1 if i < rem else 0)
+        for num, label in labels:
             frags.append(("class:fkey-gap", " " * edge_gap))
             frags.append(("class:fkey-num", num))
             frags.append(("class:fkey-gap", " " * num_gap))
-            frags.append(("class:fkey-label", fit(" " + label, w)))
-        frags.append(("class:fkey-gap", " " * edge_gap))
+            frags.append(("class:fkey-label", fit(" " + label, box_w)))
+        frags.append(("class:fkey-gap", " " * (edge_gap + rem)))  # absorb remainder
         return frags
 
     # ── overlays ────────────────────────────────────────────────────────────
@@ -372,7 +371,16 @@ class VolkovData:
         except vc.BackendError as exc:
             self.overlay = ("message", "Error", str(exc))
             return
-        self.overlay = ("view", cur.name, self._format_view(data), 0)
+        lines: list[str] = []
+        if cur.kind == "record":  # show the log metadata (time/station/…) above the payload
+            try:
+                for k, v in self.panel.backend.info(cur):
+                    lines.append(f"{k}: {v}")
+                lines.append("─" * 40)
+            except vc.BackendError:
+                pass
+        lines += self._format_view(data)
+        self.overlay = ("view", cur.name, lines, 0)
 
     @staticmethod
     def _format_view(data: bytes) -> list[str]:
@@ -403,6 +411,14 @@ class VolkovData:
             return
         self.overlay = ("info", "Info", rows)
 
+    def _do_writes_info(self) -> None:
+        """F2: inside MLA → summary of the writes (container); else → file info."""
+        be = self.panel.backend
+        if isinstance(be, vc.MlaBackend):
+            self.overlay = ("info", "MLA writes", be._container_info())
+        else:
+            self._do_info()
+
     def _do_mkdir(self) -> None:
         self.overlay = ("input", "Make directory", "New directory name:", "", "mkdir")
 
@@ -424,6 +440,18 @@ class VolkovData:
             self.overlay = ("message", "Copy", "Select a file to copy.")
             return
         dest_name = cur.meta.get("export_name", cur.name)
+        if self.other.backend.exists(dest_name):
+            self.overlay = ("confirm", "Overwrite",
+                            f"'{dest_name}' exists. Overwrite?", "copy")
+            return
+        self._copy_now()
+
+    def _copy_now(self) -> None:
+        """Perform the actual copy of the selected item to the other panel."""
+        cur = self.panel.current
+        if cur is None:
+            return
+        dest_name = cur.meta.get("export_name", cur.name)
         try:
             data = self.panel.backend.read(cur)
             self.other.backend.put_file(dest_name, data)
@@ -431,7 +459,7 @@ class VolkovData:
         except vc.BackendError as exc:
             self.overlay = ("message", "Error", str(exc))
             return
-        self.overlay = ("message", "Copy", f"Copied to '{dest_name}' in the other panel.")
+        self.overlay = None  # silent success — panel just refreshes
 
     def _commit_input(self) -> None:
         _, _t, _p, buf, action = self.overlay
@@ -455,6 +483,8 @@ class VolkovData:
             if action == "delete":
                 self.panel.backend.delete(self.panel.current)
                 self.panel.reload()
+            elif action == "copy":
+                self._copy_now()
         except vc.BackendError as exc:
             self.overlay = ("message", "Error", str(exc))
 
@@ -527,8 +557,10 @@ class VolkovData:
 
         # ── function keys ──
         @kb.add("f1", filter=no_overlay)
-        @kb.add("f2", filter=no_overlay)
         def _(e): self._do_info()
+
+        @kb.add("f2", filter=no_overlay)
+        def _(e): self._do_writes_info()
 
         @kb.add("f3", filter=no_overlay)
         def _(e): self._do_view()

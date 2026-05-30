@@ -94,6 +94,10 @@ class Backend(ABC):
         """Receive a copied file (used by copy between panels)."""
         raise Unsupported("Cannot write here")
 
+    def exists(self, name: str) -> bool:
+        """Whether an entry with this name already exists here (for overwrite check)."""
+        return False
+
     # ── lifecycle ───────────────────────────────────────────────────────────
     def close(self) -> None:
         """Release any held resources (open files, …). Safe to call repeatedly."""
