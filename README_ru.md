@@ -75,7 +75,7 @@ samples/weather.mla      приложенный образец (упакован
 tests/                   набор тестов unittest для volkov_core (без GUI)
 third_party/nic_mla/     встроенный NIC-MLA v1.0 — канонический формат данных (Python + C)
   tools/mla_schema.py      host-only сборщики и ридеры схемы/станций (VDE их линкует)
-docs/vc-reference/       исходники оригинального Volkov Commander (BSD-2) как образец UI
+docs/vc-reference/       один архив Volkov Commander (BSD-2) — резервный образец UI
 ```
 
 Приложение читает формат логгера через эталонную Python-реализацию MLA

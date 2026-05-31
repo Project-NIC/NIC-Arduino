@@ -73,7 +73,7 @@ samples/weather.mla      committed sample (packed rows + schema + stations)
 tests/                   stdlib unittest suite for volkov_core (GUI-free)
 third_party/nic_mla/     vendored NIC-MLA v1.0 — canonical data format (Python + C)
   tools/mla_schema.py      host-only schema/station builders + readers (VDE links)
-docs/vc-reference/       original Volkov Commander sources (BSD-2) as a UI reference
+docs/vc-reference/       one archived copy of Volkov Commander (BSD-2) — UI backup reference
 ```
 
 The desktop reads the logger format through MLA's Python reference
