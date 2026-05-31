@@ -79,8 +79,8 @@ length-based guess (RAW/hex).
 ## How the host uses it
 
 1. **Viewer / F4 Values** — `decode_value` looks up `(station, channel)` in the
-   table, reads the payload per `dtype`, applies `× 10^scale_exp`, appends
-   `unit`. Falls back to the current guess when there's no descriptor.
+   table, reads the payload into `x` per `dtype`, evaluates the `formula`, appends
+   `unit`. Falls back to the current length-based guess when there's no descriptor.
 2. **Export (CSV / SQL)** — a new choice at export time: **raw** bytes vs.
    **translated** values (default = translated, since nobody wants raw in SQL).
    Same spirit as how the export filename is already built from metadata.
