@@ -63,33 +63,30 @@ Conversion-table region (inside prefix, offset 34..509)
 [5]  flags      1 B  reserved (0)
 [6]  unit       6 B  ASCII/UTF-8 null-padded, e.g. "degC" "%" "hPa" "V"
 [12] name       8 B  ASCII/UTF-8 null-padded, e.g. "Temp" "Humidity" "Press"
-[20] formula    4 B  see below   how to turn the int16 into the real value
+[20] conv       4 B  see below   how to turn the int16 into the real value
+                                 (divisor + offset; §"The conversion")
 ```
 
 Because the value type is fixed (`int16`), the descriptor spends its bytes on
 what actually varies between channels: the **name**, the **unit**, and a tiny
 **conversion**.
 
-### The conversion (`formula`, 4 B) — two options to sign off
+### The conversion (`conv`, 4 B) — DECIDED: scale + offset
 
-**Option A — scale + offset (compact, fixed math).** The host computes
-`value = raw / divisor + offset`:
+The host computes `value = raw / divisor + offset`:
 
 ```
 [20] divisor   2 B  uint16 LE   e.g. 10 → one decimal, 100 → two decimals
 [22] offset    2 B  int16  LE   added after scaling (e.g. sensor with a bias)
 ```
 
-Covers "235 → 23.5 °C" (`divisor=10`), pressure offsets, etc. Trivial, no parser.
+Covers "235 → 23.5 °C" (`divisor=10`), pressure/temperature offsets, etc.
+Trivial, no parser, no float on the MCU side. Four bytes is the natural word
+size here — the same width the LOG already uses for the unix timestamp.
 
-**Option B — text micro-formula (more flexible).** Those 4 B instead hold a tiny
-expression like `x/10`, evaluated host-side by a small safe arithmetic parser
-(**never Python `eval`**). More general (could do `(x-32)*5/9`), but 4 B is short
-— realistically needs widening the field, costing descriptors.
-
-> Given your "keep it simple", **Option A is the recommendation**: it matches how
-> sensors are actually scaled and needs zero parser. Option B is here only so the
-> trade-off is on record.
+(A text micro-formula like `x/10` was considered and **dropped**: it needs a
+host-side expression parser and more than 4 B to be useful — against the
+"keep it simple" rule.)
 
 ### Multiple station types (your idea)
 
@@ -129,9 +126,13 @@ All of this lives in **`volkov_core`** (GUI-free): the MLA edits are a thin pull
 from the library and the same logic is reusable headless. The C/MCU side only
 ever *writes* the fixed 24 B descriptors (constant bytes) — no math, no float.
 
-## Open questions for sign-off
+## Sign-off status
 
-1. **Conversion = Option A (divisor + offset)?** — recommended, simplest. Or B?
-2. **Descriptor size 24 B → 19 channels/file.** Enough? If you really want 4 full
+- ✓ **Value type** — fixed `int16` (no float, no byte-width picking).
+- ✓ **Conversion** — `divisor + offset`, 4 B. Text formula dropped.
+
+### Still open
+
+1. **Descriptor size 24 B → 19 channels/file.** Enough? If you really want 4 full
    station types (~28 channels), do we shorten name/unit, or spill into INDEX?
-3. **Name 8 B / unit 6 B** — long enough for your labels?
+2. **Name 8 B / unit 6 B** — long enough for your labels?
