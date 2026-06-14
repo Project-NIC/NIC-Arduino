@@ -46,6 +46,13 @@ MLA jí nepřiřazuje význam; dělá to glue. Enkodéry v builderu:
 - `dl_gps(lat, lon)` — 2× i32 (stupně ×10⁷, ~1 cm)
 - `dl_ident(number, region, kind, reserved)` — hierarchická (4× u16)
 - `dl_raw(8 bajtů)` — cokoliv
+
+**Pevná stanice → `dl_gps`, jednou zaměřená při instalaci.** Poloha *je* identita —
+žádné zvláštní pole polohy, žádné číslování stanic, které dojde; globálně jednoznačné
+na ~1 cm a připravené na prostorové indexování. Stejná 8bajtová identita slouží každému
+frontu (seismo, weather, iono, …); souřadnici při instalaci zafixuj, ať nelítá s každým
+fixem. `dl_ident` / `dl_raw` zůstávají pro hierarchická nebo vlastní ID.
+
 > Čtyři elektroměry v jedné krabici → 4 stanice se **stejnou GPS, různým `number`,
 > stejným odkazem na profil** (layout uložený jednou).
 

@@ -46,6 +46,13 @@ MLA gives the 8 bytes no meaning; the glue does. Builder encoders:
 - `dl_gps(lat, lon)` — 2× i32 (degrees ×10⁷, ~1 cm)
 - `dl_ident(number, region, kind, reserved)` — hierarchical (4× u16)
 - `dl_raw(8 bytes)` — anything
+
+**Fixed station → `dl_gps`, surveyed once at install.** The location *is* the identity
+— no separate position field, no station-number scheme to outgrow, globally unique to
+~1 cm and ready for spatial indexing. The same 8-byte identity serves every front
+(seismo, weather, iono, …); freeze the coordinate so it does not drift with each fix.
+`dl_ident` / `dl_raw` stay for hierarchical or custom IDs.
+
 > Four electricity meters in one box → 4 stations with the **same GPS, different
 > `number`, same profile_ref** (the layout is stored once).
 
