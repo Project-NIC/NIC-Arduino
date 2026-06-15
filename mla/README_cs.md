@@ -113,9 +113,10 @@ from mla_schema import MlaSchemaBuilder, MlaStationTable, mla_read_schema, \
 
 sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
-# Záznam stanice = identita(8B) + nadm. výška(2B). Identitu sestav přes
-# dl_ident / dl_gps / dl_raw; výška jsou znaménkové metry (None = neznámá).
-st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235)  # index 1 → tato stanice
+# Záznam stanice = identita(8B) + nadm. výška(2B) + název(32B). Identitu sestav
+# přes dl_ident / dl_gps / dl_raw; výška jsou znaménkové metry (None = neznámá);
+# název je čitelný popisek (UTF-8, ≤32 B, "" = žádný — StationXML <Site><Name>).
+st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")  # index 1 → tato stanice
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -129,7 +130,7 @@ with MlaPosixHAL("log.mla") as hal:
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        identity, vyska_m = mla_split_station(stations[rec.station - 1])  # 8 neprůhledných bajtů + metry
+        identity, vyska_m, nazev = mla_split_station(stations[rec.station - 1])  # 8 neprůhledných bajtů + metry + název
         cols = mla_decode_payload(fields, data)   # [(název, jednotka, hodnota), …]
 ```
 

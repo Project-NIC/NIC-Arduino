@@ -2,8 +2,9 @@
 Host glue: give the opaque station bytes a meaning for Volkov.
 
 The MLA log carries only a 1-byte **station index**. The real station lives in the
-prefix station table as a 10-byte record per station: an 8-byte opaque identity
-(which MLA leaves uninterpreted on purpose) + a 2-byte signed-metres elevation.
+prefix station table as a 42-byte record per station: an 8-byte opaque identity
+(which MLA leaves uninterpreted on purpose) + a 2-byte signed-metres elevation +
+a 32-byte human-readable name (UTF-8, NUL-padded, all-zero = none).
 Volkov's convention — matching MLA's ``dl_ident`` identity helper — reads the
 identity as ``region(2) + number(2) + kind(2) + reserved(2)``, all u16 LE. This
 tiny module is the only place that convention lives; the backend just asks it
@@ -29,7 +30,7 @@ class VdeStationMap:
     """Resolve a 1-byte station index to its real (region, number) + elevation."""
 
     def __init__(self, records: list[bytes] | None):
-        self._records = records  # list of 10-byte records, or None if no table
+        self._records = records  # list of 42-byte records, or None if no table
 
     @classmethod
     def from_prefix(cls, prefix: bytes) -> "VdeStationMap":
@@ -44,7 +45,7 @@ class VdeStationMap:
 
     @property
     def records(self) -> list[bytes]:
-        """The raw 10-byte station records (empty list if no table)."""
+        """The raw 42-byte station records (empty list if no table)."""
         return list(self._records or [])
 
     def resolve(self, index: int) -> tuple[int, int] | None:
@@ -54,7 +55,7 @@ class VdeStationMap:
         """
         if not self._records or not (1 <= index <= len(self._records)):
             return None
-        identity, _elev = mla_split_station(self._records[index - 1])
+        identity, _elev, _name = mla_split_station(self._records[index - 1])
         region, number, _kind, _reserved = struct.unpack("<HHHH", identity)
         return region, number
 
@@ -63,6 +64,12 @@ class VdeStationMap:
         if not self._records or not (1 <= index <= len(self._records)):
             return None
         return mla_split_station(self._records[index - 1])[1]
+
+    def name(self, index: int) -> str:
+        """Human-readable station name for a log index ("" if absent/unset)."""
+        if not self._records or not (1 <= index <= len(self._records)):
+            return ""
+        return mla_split_station(self._records[index - 1])[2]
 
     def label(self, index: int) -> str:
         """Human label for a station index: 'region/number', else '#index'."""

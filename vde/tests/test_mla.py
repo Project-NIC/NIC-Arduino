@@ -230,7 +230,8 @@ class MlaEditTests(unittest.TestCase):
     def test_views(self):
         self.assertEqual([f["name"] for f in self.b.schema_view()], ["temp", "humidity"])
         self.assertEqual(self.b.station_view(),
-                         [{"index": 1, "region": 7, "number": 100}])
+                         [{"index": 1, "region": 7, "number": 100,
+                           "name": helpers.SCHEMA_STATION_NAME}])
 
     def test_edit_schema_scale_persists(self):
         self.b.edit_schema_field(0, exp10=-2)            # 23.5 → 2.35
@@ -247,7 +248,10 @@ class MlaEditTests(unittest.TestCase):
     def test_edit_station_persists(self):
         self.b.edit_station(0, region=9, number=999)
         b2 = self.reopen()
-        self.assertEqual(b2.station_view()[0], {"index": 1, "region": 9, "number": 999})
+        # region/number change; the human name is preserved across the edit.
+        self.assertEqual(b2.station_view()[0],
+                         {"index": 1, "region": 9, "number": 999,
+                          "name": helpers.SCHEMA_STATION_NAME})
         self.assertIn("9/999", self.first_record(b2).name)
 
     def test_invalid_edits_rejected(self):

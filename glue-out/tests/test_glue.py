@@ -40,7 +40,7 @@ def _build(path: str) -> None:
     sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
     sb.data("humidity", unit="pct", width=2, exp10=-1)
     st = MlaStationTable()
-    st.station(dl_ident(region=7, number=100), elev_m=235)
+    st.station(dl_ident(region=7, number=100), elev_m=235, name="Praha-Libuš")
 
     hal = MlaPosixHAL.create(path, file_size=64 * 1024)
     with hal:
@@ -76,6 +76,9 @@ def test_raw_roundtrip_and_decode():
             assert abs(v0["humidity"] - 60.0) < 1e-9, v0
             assert recs[0].station_label == "7/100"
             assert (recs[0].region, recs[0].number) == (7, 100)
+            # the human station name is resolved (UTF-8, multibyte) and exposed
+            assert recs[0].name == "Praha-Libuš", recs[0].name
+            assert r.station_name(1) == "Praha-Libuš"
 
             # record 1: signed negative temperature
             v1 = dict((n, val) for n, _u, val in recs[1].values)

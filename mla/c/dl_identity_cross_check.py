@@ -19,7 +19,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "tools"))
 
-from mla_datalogger import dl_gps, dl_ident, dl_elev, dl_elev_decode
+from mla_datalogger import (dl_gps, dl_ident, dl_elev, dl_elev_decode,
+                            _sta_name_bytes, _sta_name_decode, MLA_STA_NAME_LEN)
 
 _passed = _failed = 0
 
@@ -38,6 +39,10 @@ def main(path):
     c_gps, c_ident = data[0:8], data[8:16]
     c_e235, c_eneg, c_ezero, c_eunk = (data[16:18], data[18:20],
                                        data[20:22], data[22:24])
+    _N = MLA_STA_NAME_LEN
+    c_name_ascii = data[24:24 + _N]
+    c_name_empty = data[24 + _N:24 + 2 * _N]
+    c_name_multi = data[24 + 2 * _N:24 + 3 * _N]
 
     print("NIC-MLA datalogger station identity — C→Python cross-check\n")
     check("dl_gps bytes match Python (50.0875, 14.4213)",
@@ -49,6 +54,14 @@ def main(path):
     check("dl_elev bytes match Python (0 m)", c_ezero == dl_elev(0))
     check("dl_elev sentinel matches Python (0x8000 = unknown)",
           c_eunk == dl_elev(None) and dl_elev_decode(c_eunk) is None)
+    check("dl_name bytes match Python ('Praha')",
+          c_name_ascii == _sta_name_bytes("Praha")
+          and _sta_name_decode(c_name_ascii) == "Praha")
+    check("empty name matches Python (all zeros)",
+          c_name_empty == _sta_name_bytes("") and _sta_name_decode(c_name_empty) == "")
+    check("multibyte name matches Python ('Libuš', UTF-8 byte parity)",
+          c_name_multi == _sta_name_bytes("Libuš")
+          and _sta_name_decode(c_name_multi) == "Libuš")
 
     print(f"\nResult: {_passed}/{_passed + _failed} PASS  |  {_failed} FAIL")
     print("C↔Python byte-exact ✓  ★ Viva La Resistánce ★" if not _failed

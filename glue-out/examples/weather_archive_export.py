@@ -32,7 +32,7 @@ def build_sample_archive(directory: str) -> None:
     sb = MlaSchemaBuilder(); sb.log("datetime")
     sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
     sb.data("humidity", unit="pct", width=2, exp10=-1)
-    st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235)
+    st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha-Klementinum")
 
     with MlaArchive(directory, file_size=2048, schema_table=sb.table(),
                     station_table=st.table()) as arch:

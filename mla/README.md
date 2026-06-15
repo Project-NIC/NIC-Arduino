@@ -123,9 +123,10 @@ sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
 sb.data("hum",  unit="pct",  width=2, exp10=-1)
 st = MlaStationTable()
-# Station record = identity(8B) + elevation(2B). Build the identity with
-# dl_ident / dl_gps / dl_raw; elevation is signed metres (None = unknown).
-st.station(dl_ident(region=55, number=25000), elev_m=235)   # log index 1 → this station
+# Station record = identity(8B) + elevation(2B) + name(32B). Build the identity
+# with dl_ident / dl_gps / dl_raw; elevation is signed metres (None = unknown);
+# name is a human label (UTF-8, ≤32 B, "" = none — StationXML <Site><Name>).
+st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")  # log index 1 → this station
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -133,13 +134,13 @@ with hal:
     mla.format(schema_table=sb.table(), station_table=st.table())
     mla.append(ts, station=1, data=temp.to_bytes(2,"little",signed=True)+hum.to_bytes(2,"little"))
 
-# Any reader recovers names, units, the station identity + elevation — no prior knowledge:
+# Any reader recovers names, units, the station identity + elevation + name — no prior knowledge:
 with MlaPosixHAL("log.mla") as hal:
     mla = MlaCore(hal); mla.mount()
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        identity, elev_m = mla_split_station(stations[rec.station - 1])  # 8 opaque bytes + metres
+        identity, elev_m, name = mla_split_station(stations[rec.station - 1])  # 8 opaque bytes + metres + name
         cols = mla_decode_payload(fields, data)   # [(name, unit, value), …]
 ```
 

@@ -81,6 +81,7 @@ class DecodedRecord:
     values:     list[tuple[str, str, float | int]] | None  # (name, unit, value) per field
     region:     int | None         # resolved station region (None if no table)
     number:     int | None         # resolved station number
+    name:       str = ""           # resolved human station name ("" if none/unresolved)
 
     @property
     def kind(self) -> str:
@@ -168,12 +169,13 @@ class GlueReader:
     def station_info(self, index: int) -> tuple[int, int] | None:
         """(region, number) for a station index (1..n), or None if unresolved.
 
-        The station record is identity(8B) + elevation(2B); the identity is read
-        as the hierarchical dl_ident form (region/number/kind/reserved).
+        The station record is identity(8B) + elevation(2B) + name(32B); the
+        identity is read as the hierarchical dl_ident form
+        (region/number/kind/reserved).
         """
         if not self._stations or not (1 <= index <= len(self._stations)):
             return None
-        identity, _elev = mla_split_station(self._stations[index - 1])
+        identity, _elev, _name = mla_split_station(self._stations[index - 1])
         region, number, _kind, _reserved = struct.unpack("<HHHH", identity)
         return region, number
 
@@ -182,6 +184,12 @@ class GlueReader:
         if not self._stations or not (1 <= index <= len(self._stations)):
             return None
         return mla_split_station(self._stations[index - 1])[1]
+
+    def station_name(self, index: int) -> str:
+        """Human-readable name for a station index ("" if unresolved/unset)."""
+        if not self._stations or not (1 <= index <= len(self._stations)):
+            return ""
+        return mla_split_station(self._stations[index - 1])[2]
 
     # ── decompression (NIC-DMD) ────────────────────────────────────────────────
     def _decompress_all(self) -> list:
@@ -244,7 +252,7 @@ class GlueReader:
             station=rec.station, compressed=rec.compressed,
             kf_back=rec.kf_back, length=rec.length, block=block,
             payload=payload, values=values,
-            region=region, number=number,
+            region=region, number=number, name=self.station_name(rec.station),
         )
 
     def __len__(self) -> int:

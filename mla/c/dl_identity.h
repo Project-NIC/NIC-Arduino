@@ -69,4 +69,29 @@ static inline int16_t dl_elev_decode(const uint8_t in[2]) {
     return (int16_t)mla_get_u16(in);
 }
 
+/* Human-readable station name — StationXML <Site><Name> material. A SEPARATE
+ * trailing station-record field (after elevation, and after the name-less
+ * fields of the single-schema / datalogger records): fixed DL_STA_NAME_LEN (32)
+ * bytes, UTF-8, NUL-padded; all-zero = no name. It is prefix-once metadata — the
+ * 16-byte log record is unchanged. Byte-exact with the Python reference
+ * (mla_schema._sta_name_bytes / _sta_name_decode). */
+#define DL_STA_NAME_LEN 32u
+
+/* Copy `s` (UTF-8) into `out`, NUL-padded to DL_STA_NAME_LEN. If strlen(s) > 32
+ * only the first 32 bytes are copied (kept simple and safe — never overflows). */
+static inline void dl_name(const char *s, uint8_t out[DL_STA_NAME_LEN]) {
+    unsigned i = 0;
+    if (s) for (; i < DL_STA_NAME_LEN && s[i]; i++) out[i] = (uint8_t)s[i];
+    for (; i < DL_STA_NAME_LEN; i++) out[i] = 0u;
+}
+
+/* Copy the 32-byte name field out as a NUL-terminated C string (33 B buffer).
+ * The stored field is NUL-padded, so this is a verbatim copy + terminator. */
+static inline void dl_name_decode(const uint8_t in[DL_STA_NAME_LEN],
+                                  char out[DL_STA_NAME_LEN + 1]) {
+    unsigned i;
+    for (i = 0; i < DL_STA_NAME_LEN; i++) out[i] = (char)in[i];
+    out[DL_STA_NAME_LEN] = '\0';
+}
+
 #endif /* NIC_DL_IDENTITY_H */

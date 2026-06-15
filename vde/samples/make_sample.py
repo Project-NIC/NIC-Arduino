@@ -32,9 +32,12 @@ SENSORS = [
     ("pressure", "hPa",  2, -1, False, 1013.0, 12.0),
     ("wind",     "m_s",  2, -1, False,    4.0,  3.0),
 ]
-# Three LoRa nodes — index 1..3 → (region, number, elevation_m). The 8-byte
-# identity is dl_ident(region, number); elevation is a separate signed field.
-STATIONS = [(55, 25000, 235), (55, 25001, 240), (55, 25777, 198)]
+# Three LoRa nodes — index 1..3 → (region, number, elevation_m, name). The
+# 8-byte identity is dl_ident(region, number); elevation is a separate signed
+# field; name is a human label (UTF-8, ≤32 B — StationXML <Site><Name> material).
+STATIONS = [(55, 25000, 235, "Praha-Klementinum"),
+            (55, 25001, 240, "Praha-Karlov"),
+            (55, 25777, 198, "Praha-Libuš")]
 
 T0 = 1_748_000_000  # base unix time (~2025)
 STEP = 900  # 15 min between samples
@@ -51,8 +54,8 @@ def build_schema() -> bytes:
 
 def build_stations() -> bytes:
     st = MlaStationTable()
-    for region, number, elev_m in STATIONS:
-        st.station(dl_ident(region=region, number=number), elev_m=elev_m)
+    for region, number, elev_m, name in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m, name=name)
     return st.table()
 
 

@@ -86,10 +86,12 @@ def main() -> int:
         stations = mla_read_stations(pfx)
         check("station table decodes (2 stations)", stations is not None and len(stations) == 2)
         if stations:
-            ident0, elev0 = mla_split_station(stations[0])
+            ident0, elev0, name0 = mla_split_station(stations[0])
             check("station 1 identity → dl_ident(region 55, number 25000)",
                   ident0 == dl_ident(region=55, number=25000, reserved=0xFFFF))
             check("station 1 elevation → 235 m", elev0 == 235)
+            check("station 1 name → 'Praha'", name0 == "Praha")
+            check("station 2 name → '' (none)", mla_split_station(stations[1])[2] == "")
 
         # End-to-end: decode record 0's payload through the C-written schema.
         if data_f is not None:

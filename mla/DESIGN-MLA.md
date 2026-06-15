@@ -179,8 +179,9 @@ in the file.
 ```
 [0] sta_ver  1 B  = 0x53
 [1] n        1 B  number of stations (1..255)
-[2 ..]       n × 10 B records (index i in the log → record i-1), each:
+[2 ..]       n × 42 B records (index i in the log → record i-1), each:
                 identity(8 B)  + elevation(2 B, i16 LE, metres, 0x8000 = unknown)
+                + name(32 B, UTF-8, NUL-padded, all-zero = none)
 ```
 
 The 8-byte **identity is opaque to MLA** — build it with the same encoders the
@@ -188,8 +189,11 @@ datalogger format uses (`dl_gps` = 2× i32 deg×1e7, `dl_ident` = region/number/
 kind/reserved as 4× u16, or `dl_raw` = 8 bytes verbatim). This **unifies** the
 station identity on the 8-byte model; the old 6-byte region/number/reserved
 record is **retired**. `elevation` is a separate signed-metres field (i16 LE,
-`0x8000` = unknown), distinct from the opaque identity. People assign station
-numbers with gaps — the glue maps them to compact 1-byte indices and back.
+`0x8000` = unknown), distinct from the opaque identity. `name` is a separate
+fixed 32-byte human-readable label (UTF-8, NUL-padded, all-zero = none) —
+StationXML `<Site><Name>` material; it is **prefix-once** metadata, NOT carried
+in each 16-byte log record. People assign station numbers with gaps — the glue
+maps them to compact 1-byte indices and back.
 
 > **Dumb container.** Both tables are written verbatim from above and never
 > interpreted by the C/MCU path. Compression, encryption, station-number

@@ -120,9 +120,10 @@ from mla_schema import MlaSchemaBuilder, MlaStationTable, mla_read_schema, \
 
 sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
-# Запись станции = идентичность(8B) + высота(2B). Идентичность собирается через
-# dl_ident / dl_gps / dl_raw; высота — знаковые метры (None = неизвестно).
-st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235)  # индекс 1 → эта станция
+# Запись станции = идентичность(8B) + высота(2B) + имя(32B). Идентичность
+# собирается через dl_ident / dl_gps / dl_raw; высота — знаковые метры (None =
+# неизвестно); имя — читаемая метка (UTF-8, ≤32 B, "" = нет — StationXML <Site><Name>).
+st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")  # индекс 1 → эта станция
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -130,13 +131,13 @@ with hal:
     mla.format(schema_table=sb.table(), station_table=st.table())
     mla.append(ts, station=1, data=temp.to_bytes(2, "little", signed=True))
 
-# Любой читатель восстановит имена, единицы, идентичность станции и высоту — без знаний:
+# Любой читатель восстановит имена, единицы, идентичность станции, высоту и имя — без знаний:
 with MlaPosixHAL("log.mla") as hal:
     mla = MlaCore(hal); mla.mount()
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        identity, vysota_m = mla_split_station(stations[rec.station - 1])  # 8 непрозрачных байт + метры
+        identity, vysota_m, imya = mla_split_station(stations[rec.station - 1])  # 8 непрозрачных байт + метры + имя
         cols = mla_decode_payload(fields, data)   # [(имя, единица, значение), …]
 ```
 

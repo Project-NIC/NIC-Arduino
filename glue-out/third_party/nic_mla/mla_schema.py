@@ -74,7 +74,8 @@ MLA_DATA_MAX    = 65535                   # max data payload per record (v1.1 lo
                                           # packet width is u8) — that limit lives in NIC-DMD,
                                           # not here; a RAW schema may use the full u16.
 MLA_STATION_VER = 0x53                    # station table tag (distinct from schema ver)
-MLA_STATION_REC = 10                      # bytes per station: identity(8) + elev_m(i16)
+MLA_STA_NAME_LEN = 32                     # bytes for the human station name, UTF-8, NUL-padded
+MLA_STATION_REC = 8 + 2 + MLA_STA_NAME_LEN  # 42 — identity(8) + elev_m(i16) + name(32)
 
 # ── Station identity (the 8 opaque bytes) + elevation ───────────────────────
 #  ONE definition of the station identity, shared by BOTH station tables (the
@@ -141,6 +142,26 @@ def dl_elev_decode(two: bytes) -> int | None:
         raise ValueError(f"elevation must be {MLA_ELEV_LEN} B, got {len(two)}")
     v = struct.unpack("<h", two)[0]
     return None if v == -0x8000 else v
+
+
+# ── Station name (human-readable, StationXML <Site><Name> material) ──────────
+#  A SEPARATE trailing station-record field: fixed MLA_STA_NAME_LEN (32) bytes,
+#  UTF-8, NUL-padded; all-zero = no name. Same encode discipline as a field name
+#  (MlaField.name_bytes): raise if the UTF-8 bytes exceed the field; decode
+#  strips at the first NUL. It is prefix-once metadata — the 16-byte log record
+#  is unchanged (still a 1-byte station index).
+
+def _sta_name_bytes(name: str) -> bytes:
+    """The station name as exactly MLA_STA_NAME_LEN bytes (UTF-8, NUL-padded)."""
+    enc = (name or "").encode("utf-8")
+    if len(enc) > MLA_STA_NAME_LEN:
+        raise ValueError(f"{name!r}: station name is {len(enc)} B, max {MLA_STA_NAME_LEN}")
+    return enc + b"\x00" * (MLA_STA_NAME_LEN - len(enc))
+
+
+def _sta_name_decode(b: bytes) -> str:
+    """Inverse of _sta_name_bytes: UTF-8 up to the first NUL ("" if all-zero)."""
+    return bytes(b).split(b"\x00", 1)[0].decode("utf-8", "replace")
 
 
 def mla_prefix_byte_len(schema_len: int, station_len: int = 0) -> int:
@@ -381,13 +402,15 @@ def mla_encode_payload(data_fields: list[MlaField],
     return b"".join(mla_encode_value(f, v) for f, v in zip(data_fields, seq))
 
 
-# ── Station table (index → identity(8 B) + elevation(2 B)) ──────────────────
+# ── Station table (index → identity(8 B) + elevation(2 B) + name(32 B)) ─────
 #  The log carries a 1-byte station INDEX (1..255, 0 = none). The real station
-#  lives here, one 10 B record per station: an 8-byte OPAQUE identity (its
-#  meaning is the glue's — see dl_gps / dl_ident / dl_raw above) followed by a
-#  2-byte signed elevation in metres (i16 LE, 0x8000 = unknown). Elevation is a
-#  SEPARATE field, distinct from the opaque identity, so MLA still never has to
-#  interpret the 8 identity bytes.
+#  lives here, one 42 B record per station: an 8-byte OPAQUE identity (its
+#  meaning is the glue's — see dl_gps / dl_ident / dl_raw above), a 2-byte
+#  signed elevation in metres (i16 LE, 0x8000 = unknown), then a 32-byte
+#  human-readable name (UTF-8, NUL-padded, all-zero = none — StationXML
+#  <Site><Name> material). Elevation and name are SEPARATE fields, distinct
+#  from the opaque identity, so MLA still never has to interpret the 8 identity
+#  bytes.
 #
 #  This UNIFIES the station identity on the same 8-byte model used by the
 #  datalogger format (tools/mla_datalogger.py) — the old divergent 6-byte
@@ -396,14 +419,16 @@ def mla_encode_payload(data_fields: list[MlaField],
 #  Binary layout:
 #     [0] sta_ver  1B  = MLA_STATION_VER
 #     [1] n        1B  number of stations (1..255); index i (1..n) → record i-1
-#     [2 ..]           n × ( identity(8 B) + elev_m(2 B i16 LE) )  = n × 10 B
+#     [2 ..]           n × ( identity(8 B) + elev_m(2 B i16 LE)
+#                            + name(32 B UTF-8 NUL-padded) )  = n × 42 B
 
 class MlaStationTable:
-    """Collect station records (identity 8 B + elevation 2 B) → binary table.
+    """Collect station records (identity 8 B + elevation 2 B + name 32 B) → binary table.
 
     The identity's 8 bytes are opaque to MLA; build them with dl_gps / dl_ident
     / dl_raw. Elevation is signed metres (i16 LE); None → the 0x8000 sentinel
-    (unknown). Push a fully-formed 10-byte record via .raw() if you prefer.
+    (unknown). ``name`` is a human label (UTF-8, ≤32 B, NUL-padded; "" = none).
+    Push a fully-formed 42-byte record via .raw() if you prefer.
     """
 
     def __init__(self) -> None:
@@ -417,15 +442,17 @@ class MlaStationTable:
         self.records.append(bytes(ten))
         return self
 
-    def station(self, identity: bytes, elev_m: int | None = None) -> "MlaStationTable":
-        """Add a station: 8-byte opaque ``identity`` + signed metres ``elev_m``.
+    def station(self, identity: bytes, elev_m: int | None = None,
+                name: str = "") -> "MlaStationTable":
+        """Add a station: opaque ``identity`` + signed metres ``elev_m`` + ``name``.
 
         ``identity`` is produced by dl_gps / dl_ident / dl_raw (exactly 8 B).
         ``elev_m`` is signed metres; None → the 0x8000 (unknown) sentinel.
+        ``name`` is a human-readable label (UTF-8, ≤32 B, NUL-padded; "" = none).
         """
         if len(identity) != DL_IDENT_LEN:
             raise ValueError(f"identity must be {DL_IDENT_LEN} B, got {len(identity)}")
-        return self.raw(bytes(identity) + dl_elev(elev_m))
+        return self.raw(bytes(identity) + dl_elev(elev_m) + _sta_name_bytes(name))
 
     def table(self) -> bytes:
         n = len(self.records)
@@ -444,10 +471,11 @@ def mla_station_byte_len(prefix: bytes, off: int) -> int:
 
 
 def mla_read_stations(prefix: bytes) -> list[bytes] | None:
-    """Decode the station table → list of 10-byte records (None if absent).
+    """Decode the station table → list of 42-byte records (None if absent).
 
     Index i in the log (1..n) maps to records[i-1]; index 0 means "no station".
-    Each record is identity(8 B) + elev_m(2 B); split it with mla_split_station.
+    Each record is identity(8 B) + elev_m(2 B) + name(32 B); split it with
+    mla_split_station.
     """
     slen = mla_schema_byte_len(prefix)
     off  = MLA_SCHEMA_OFF + slen
@@ -461,15 +489,19 @@ def mla_read_stations(prefix: bytes) -> list[bytes] | None:
                          off + 2 + (i + 1) * MLA_STATION_REC]) for i in range(n)]
 
 
-def mla_split_station(record: bytes) -> tuple[bytes, int | None]:
-    """Split a 10-byte station record into (identity8, elev_m).
+def mla_split_station(record: bytes) -> tuple[bytes, int | None, str]:
+    """Split a 42-byte station record into (identity8, elev_m, name).
 
     ``identity8`` stays opaque (decode it with dl_gps_decode / your own scheme);
-    ``elev_m`` is signed metres or None when unset (the 0x8000 sentinel).
+    ``elev_m`` is signed metres or None when unset (the 0x8000 sentinel);
+    ``name`` is the human label (UTF-8, "" when the 32-byte field is all-zero).
     """
     if len(record) != MLA_STATION_REC:
         raise ValueError(f"station record must be {MLA_STATION_REC} B")
-    return bytes(record[:DL_IDENT_LEN]), dl_elev_decode(record[DL_IDENT_LEN:])
+    identity = bytes(record[:DL_IDENT_LEN])
+    elev_m   = dl_elev_decode(record[DL_IDENT_LEN:DL_IDENT_LEN + MLA_ELEV_LEN])
+    name     = _sta_name_decode(record[DL_IDENT_LEN + MLA_ELEV_LEN:])
+    return identity, elev_m, name
 
 
 # ── Builder ────────────────────────────────────────────────────
@@ -617,9 +649,9 @@ if __name__ == "__main__":
     # STATION table: index 1..n → (identity, elevation). Filled by the host glue;
     # here a few stations in one region, with example elevations in metres.
     st = MlaStationTable()
-    st.station(dl_ident(number=25000, region=55), elev_m=235)   # index 1
-    st.station(dl_ident(number=25001, region=55), elev_m=240)   # index 2
-    st.station(dl_ident(number=25777, region=55))               # index 3 — elev unknown
+    st.station(dl_ident(number=25000, region=55), elev_m=235, name="Praha-Klementinum")   # index 1
+    st.station(dl_ident(number=25001, region=55), elev_m=240, name="Praha-Karlov")        # index 2
+    st.station(dl_ident(number=25777, region=55))               # index 3 — elev/name unset
     station_table = st.table()
 
     table = sb.table()

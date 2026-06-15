@@ -432,16 +432,16 @@ class VdeMlaBackend(VdeBackend):
                 for f in (self._data_fields or [])]
 
     def station_view(self) -> list[dict]:
-        """Editable view of the station table (index 1..n → region/number).
+        """Editable view of the station table (index 1..n → region/number/name).
 
         The identity is read as dl_ident (region/number/kind/reserved); the
-        elevation field stays preserved across edits (see edit_station).
+        elevation and name fields stay preserved across edits (see edit_station).
         """
         out = []
         for i, rec in enumerate(self._stations.records, start=1):
-            identity, _elev = mla_split_station(rec)
+            identity, _elev, name = mla_split_station(rec)
             region, number, _kind, _res = struct.unpack("<HHHH", identity)
-            out.append({"index": i, "region": region, "number": number})
+            out.append({"index": i, "region": region, "number": number, "name": name})
         return out
 
     def edit_schema_field(self, i: int, **changes) -> None:
@@ -461,18 +461,19 @@ class VdeMlaBackend(VdeBackend):
         self._rewrite_tables(data_fields=fields)
 
     def edit_station(self, i: int, *, region: int, number: int) -> None:
-        """Change one station's region/number (0-based i); kind/reserved/elevation preserved."""
+        """Change one station's region/number (0-based i); kind/reserved/elevation/name preserved."""
         recs = self._stations.records
         if not (0 <= i < len(recs)):
             raise VdeBackendError("No such station")
-        identity, elev = mla_split_station(recs[i])
+        identity, elev, name = mla_split_station(recs[i])
         _r, _n, kind, reserved = struct.unpack("<HHHH", identity)
         try:
             st = MlaStationTable()
             for j, rec in enumerate(recs):
                 if j == i:
                     st.station(dl_ident(region=region, number=number,
-                                        kind=kind, reserved=reserved), elev_m=elev)
+                                        kind=kind, reserved=reserved),
+                               elev_m=elev, name=name)
                 else:
                     st.raw(rec)
             new_station = st.table()

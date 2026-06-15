@@ -26,8 +26,9 @@ Design — a deliberately DUMB container:
     never interprets them — translation is the host glue's job.
   • Prefix carries two self-describing tables (see tools/mla_schema.py): the
     SCHEMA table (names/units of the fields, for CSV/SQL export) and the
-    STATION table (index → identity(8B) + elevation(2B) per station). The prefix grows in whole
-    512 B sectors (up to 255) to fit them; the CRC sits in its last 2 bytes.
+    STATION table (index → identity(8B) + elevation(2B) + name(32B) per station).
+    The prefix grows in whole 512 B sectors (up to 255) to fit them; the CRC
+    sits in its last 2 bytes.
   • No checkpoints, no on-disk index/search tree. Mount finds the log boundary
     by binary search; recovery is "last CRC bad → zero it and carry on".
 
@@ -81,7 +82,8 @@ MLA_SCHEMA_OFF     = 34                # = end of the structured prefix header
 MLA_SCHEMA_VER     = 1                 # schema table version
 MLA_SCHEMA_FIELD   = 14                # bytes per field descriptor (6 core + 8 name)
 MLA_STATION_VER    = 0x53              # station table tag (distinct from schema ver)
-MLA_STATION_REC    = 10                # bytes per station: identity(8) + elev_m(i16 LE)
+MLA_STA_NAME_LEN   = 32                # bytes for the human station name (UTF-8, NUL-padded)
+MLA_STATION_REC    = 8 + 2 + MLA_STA_NAME_LEN  # 42 — identity(8) + elev_m(i16 LE) + name(32)
 
 
 # Datalogger (profile-ref) tables ride in the schema_table slot. Their tags are
@@ -105,7 +107,8 @@ def _datalogger_byte_len(raw: bytes, off: int) -> int:
         p += 1 + MLA_SCHEMA_FIELD * raw[p]                 # n_data + fields
     if len(raw) < p + 2 or raw[p] != _DL_STA_VER:
         return 0
-    p += 2 + (_DL_IDENT + 1 + 2) * raw[p + 1]              # STATIONS: 8B id + 1B ref + 2B elev
+    # STATIONS: 8B id + 1B ref + 2B elev + 32B name
+    p += 2 + (_DL_IDENT + 1 + 2 + MLA_STA_NAME_LEN) * raw[p + 1]
     return p - off
 
 
@@ -211,7 +214,7 @@ class MlaPrefix:
     region_end:     int   = 0   # 0 → computed as file_size
     reserved1:      int   = 0
     schema_table:   bytes = b""  # field names/units (CSV/SQL export)
-    station_table:  bytes = b""  # index → identity(8B) + elevation(2B i16 LE) per station
+    station_table:  bytes = b""  # index → identity(8B) + elev(2B i16 LE) + name(32B) per station
 
     def __post_init__(self):
         if self.data_base == 0:

@@ -31,8 +31,9 @@ SENSORS = [
     ("humidity", "pct",  2, -1, False,  65.0, 20.0),
 ]
 ROW_WIDTH = sum(w for _n, _u, w, *_ in SENSORS)        # 4 B — the DMD pkt_len
-# index 1..2 → (region, number, elevation_m); identity = 8-byte dl_ident.
-STATIONS = [(55, 25000, 235), (55, 25001, 240)]
+# index 1..2 → (region, number, elevation_m, name); identity = 8-byte dl_ident,
+# name = human label (UTF-8, ≤32 B — StationXML <Site><Name> material).
+STATIONS = [(55, 25000, 235, "Praha-Klementinum"), (55, 25001, 240, "Praha-Karlov")]
 T0, STEP, N_ROUNDS = 1_748_000_000, 900, 400
 
 
@@ -46,8 +47,8 @@ def build_schema() -> bytes:
 
 def build_stations() -> bytes:
     st = MlaStationTable()
-    for region, number, elev_m in STATIONS:
-        st.station(dl_ident(region=region, number=number), elev_m=elev_m)
+    for region, number, elev_m, name in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m, name=name)
     return st.table()
 
 

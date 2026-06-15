@@ -36,9 +36,9 @@ elec = b.profile([
     MlaField("power",  2, "W"),
     MlaField("energy", 4, "kWh"),
 ])
-s1 = b.station(dl_gps(50.0875, 14.4213), meteo, elev_m=235)   # Prague meteo
-s2 = b.station(dl_gps(49.1951, 16.6068), meteo, elev_m=-7)    # Brno meteo (below MSL, SAME profile)
-s3 = b.station(dl_gps(50.0875, 14.4213), elec)                # electricity, same GPS as s1, elev unknown
+s1 = b.station(dl_gps(50.0875, 14.4213), meteo, elev_m=235, name="Praha meteo")  # Prague meteo
+s2 = b.station(dl_gps(49.1951, 16.6068), meteo, elev_m=-7, name="Libuš")        # Brno meteo (below MSL, SAME profile; diacritic name)
+s3 = b.station(dl_gps(50.0875, 14.4213), elec)                # electricity, same GPS as s1, elev/name unset
 blob = b.serialize()
 
 check("station indices are 1-based", (s1, s2, s3) == (1, 2, 3))
@@ -92,6 +92,20 @@ check("dl_elev sentinel encodes to 00 80", dl_elev(None) == b"\x00\x80")
 check("dl_elev/dl_elev_decode round-trip incl. negative/zero/None",
       dl_elev_decode(dl_elev(-412)) == -412 and dl_elev_decode(dl_elev(0)) == 0
       and dl_elev_decode(dl_elev(None)) is None)
+
+# Station name (32 B UTF-8, NUL-padded, all-zero = none) round-trips per station
+check("name s1 → 'Praha meteo'", t.name_for(1) == "Praha meteo")
+check("name s2 → multibyte 'Libuš' round-trips", t.name_for(2) == "Libuš")
+check("name s3 → '' (unset)", t.name_for(3) == "")
+check("station record stride is 43 B (8 id + 1 ref + 2 elev + 32 name)",
+      len(b.serialize()) == 2 + len(b.log_fields) * 14          # LOG tag + n + fields
+      + 2 + sum(1 + len(p) * 14 for p in b.profiles)            # PROF tag + n + profiles
+      + 2 + 3 * 43)                                              # STA tag + n + 3 × 43 B
+try:
+    b.station(dl_gps(0, 0), meteo, name="y" * 33)
+    check("datalogger name > 32 B raises", False)
+except ValueError:
+    check("datalogger name > 32 B raises", True)
 
 # Hierarchical identity encoder also fits 8 B
 check("dl_ident is 8 B", len(dl_ident(number=25000, region=55, kind=7)) == 8)
@@ -156,6 +170,8 @@ check("CSV meteo: has its own columns", "temp" in rows[0] and "hum" in rows[0]
 check("CSV meteo: value matches", abs(float(rows[0]["temp"]) - 21.50) < 1e-9)
 check("CSV meteo: elevation column present (s1 = 235 m)",
       "elevation" in rows[0] and rows[0]["elevation"] == "235")
+check("CSV meteo: name column present (s1 = 'Praha meteo')",
+      "name" in rows[0] and rows[0]["name"] == "Praha meteo")
 
 _db = os.path.join(_outdir, "out.db")
 names = export_sqlite(_path, _db)

@@ -518,35 +518,47 @@ def test_schema_encode():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_station_table():
-    section("Station table — index → identity(8B) + elevation(2B)")
+    section("Station table — index → identity(8B) + elevation(2B) + name(32B)")
     st = MlaStationTable()
-    st.station(dl_ident(region=55, number=25000), elev_m=235)   # index 1
-    st.station(dl_gps(50.0875, 14.4213), elev_m=-12)            # index 2 (GPS, below MSL)
-    st.station(dl_ident(region=55, number=25777))               # index 3 (elev unknown)
+    st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")     # index 1
+    st.station(dl_gps(50.0875, 14.4213), elev_m=-12, name="Libuš")             # index 2 (GPS, diacritic)
+    st.station(dl_ident(region=55, number=25777))                               # index 3 (elev/name unset)
     stab = st.table()
 
-    check("record is 10 B (identity 8 + elev 2)", MLA_STATION_REC == 10)
+    check("record is 42 B (identity 8 + elev 2 + name 32)", MLA_STATION_REC == 42)
+    check("station table length matches", len(stab) == 2 + 3 * 42)
 
     prefix = MlaPrefix(file_size=_SZ, station_table=stab).to_bytes()
     check("prefix 512 B with stations", len(prefix) == 512)
 
     recs = mla_read_stations(prefix)
     check("mla_read_stations count", recs is not None and len(recs) == 3)
-    id1, elev1 = mla_split_station(recs[0])
+    id1, elev1, name1 = mla_split_station(recs[0])
     check("split index 1 identity → dl_ident(55, 25000)",
           id1 == dl_ident(region=55, number=25000))
     check("split index 1 elevation → 235 m", elev1 == 235)
-    id2, elev2 = mla_split_station(recs[1])
+    check("split index 1 name → 'Praha'", name1 == "Praha")
+    id2, elev2, name2 = mla_split_station(recs[1])
     check("split index 2 GPS identity round-trips",
           all(abs(a - b) < 1e-6 for a, b in zip(dl_gps_decode(id2), (50.0875, 14.4213)))
           and elev2 == -12)
-    check("split index 3 elevation unknown → None", mla_split_station(recs[2])[1] is None)
+    check("split index 2 multibyte name round-trips (Libuš)", name2 == "Libuš")
+    id3, elev3, name3 = mla_split_station(recs[2])
+    check("split index 3 elevation unknown → None", elev3 is None)
+    check("split index 3 name empty → ''", name3 == "")
+
+    # Name length discipline: >32 UTF-8 bytes must raise (mirrors MlaField.name)
+    try:
+        MlaStationTable().station(dl_ident(region=1, number=1), name="x" * 33)
+        check("name > 32 B raises", False)
+    except ValueError:
+        check("name > 32 B raises", True)
 
     # No station table → None
     plain = MlaPrefix(file_size=_SZ).to_bytes()
     check("no stations → None", mla_read_stations(plain) is None)
 
-    # End-to-end: write with both tables, mount, translate index → identity/elev
+    # End-to-end: write with both tables, mount, translate index → identity/elev/name
     schema = _example_schema().table()
     hal = MlaPosixHAL.create(_TMP, _SZ)
     with hal:
@@ -555,14 +567,20 @@ def test_station_table():
         pay = ((250).to_bytes(2, "little", signed=True)
                + (550).to_bytes(2, "little") + (1).to_bytes(4, "little"))
         m.append(1700000000, station=3, data=pay)
+        m.append(1700000001, station=1, data=pay)
     with MlaPosixHAL(_TMP) as hal:
         m2 = MlaCore(hal); m2.mount()
         pfx = m2._prefix.to_bytes()
         stations = mla_read_stations(pfx)
-        rec, _ = list(m2)[0]
-        identity, elevation = mla_split_station(stations[rec.station - 1])
+        recs2 = list(m2)
+        rec0, _ = recs2[0]
+        identity, elevation, name = mla_split_station(stations[rec0.station - 1])
         check("log index → real station identity",
-              identity == dl_ident(region=55, number=25777) and elevation is None)
+              identity == dl_ident(region=55, number=25777)
+              and elevation is None and name == "")
+        rec1, _ = recs2[1]
+        check("log index → named station",
+              mla_split_station(stations[rec1.station - 1])[2] == "Praha")
         check("both tables coexist in prefix",
               mla_read_schema(pfx)[1] is not None and stations is not None)
 

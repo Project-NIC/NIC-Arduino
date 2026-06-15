@@ -52,9 +52,26 @@ int main(int argc, char **argv) {
        dl_elev_decode(e235) == 235 && dl_elev_decode(eneg) == -412 &&
        dl_elev_decode(ezero) == 0 && dl_elev_decode(eunk) == DL_ELEV_UNKNOWN);
 
+    /* dl_name — 32 B UTF-8, NUL-padded; ASCII, empty, and a multibyte diacritic */
+    uint8_t n_ascii[DL_STA_NAME_LEN], n_empty[DL_STA_NAME_LEN], n_multi[DL_STA_NAME_LEN];
+    char    nback[DL_STA_NAME_LEN + 1];
+    dl_name("Praha", n_ascii);
+    dl_name("", n_empty);
+    dl_name("Libu\xC5\xA1", n_multi);           /* "Libuš" in UTF-8 (š = C5 A1) */
+    ok("name 'Praha' first bytes + NUL pad",
+       n_ascii[0]=='P' && n_ascii[4]=='a' && n_ascii[5]==0 && n_ascii[31]==0);
+    ok("empty name is all zeros", n_empty[0]==0 && n_empty[31]==0);
+    ok("multibyte name bytes (Libu C5 A1)",
+       n_multi[0]=='L' && n_multi[3]=='u' &&
+       n_multi[4]==0xC5 && n_multi[5]==0xA1 && n_multi[6]==0);
+    dl_name_decode(n_ascii, nback);
+    ok("name decode round-trips ('Praha')", strcmp(nback, "Praha") == 0);
+    dl_name_decode(n_empty, nback);
+    ok("empty name decodes to \"\"", nback[0] == '\0');
+
     printf("\n%s\n", fails ? "=== FAILED ===" : "=== ALL OK ===");
 
-    /* hand the canonical dl_gps + dl_ident + elevation bytes to the cross-check */
+    /* hand the canonical dl_gps + dl_ident + elevation + name bytes to the cross-check */
     if (argc > 1) {
         FILE *f = fopen(argv[1], "wb");
         if (f) {
@@ -64,6 +81,9 @@ int main(int argc, char **argv) {
             fwrite(eneg, 1, 2, f);     /* -412 m */
             fwrite(ezero, 1, 2, f);    /*    0 m */
             fwrite(eunk, 1, 2, f);     /* unknown (0x8000) */
+            fwrite(n_ascii, 1, DL_STA_NAME_LEN, f);   /* "Praha" + NUL pad */
+            fwrite(n_empty, 1, DL_STA_NAME_LEN, f);   /* "" (all zeros) */
+            fwrite(n_multi, 1, DL_STA_NAME_LEN, f);   /* "Libuš" (UTF-8) */
             fclose(f);
         }
     }

@@ -39,7 +39,9 @@ SENSORS = [
     ("wind",     "m_s",  2, -1, False,    4.0,  3.0),
 ]
 ROW_WIDTH = sum(w for _n, _u, w, *_ in SENSORS)        # 8 B
-STATIONS = [(55, 25000, 235), (55, 25001, 240), (55, 25777, 198)]  # index 1..3 (region, number, elev_m)
+STATIONS = [(55, 25000, 235, "Praha-Klementinum"),                 # index 1..3
+            (55, 25001, 240, "Praha-Karlov"),                      # (region, number,
+            (55, 25777, 198, "Praha-Libuš")]                       #  elev_m, name)
 T0, STEP, N_ROUNDS = 1_748_000_000, 900, 20
 
 
@@ -52,8 +54,8 @@ def build_sample(path: str) -> None:
     for name, unit, width, exp10, signed, _b, _s in SENSORS:
         sb.data(name, unit=unit, width=width, exp10=exp10, signed=signed)
     st = MlaStationTable()
-    for region, number, elev_m in STATIONS:
-        st.station(dl_ident(region=region, number=number), elev_m=elev_m)
+    for region, number, elev_m, sta_name in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m, name=sta_name)
 
     def pack(idx: int, t: int) -> bytes:
         out = b""

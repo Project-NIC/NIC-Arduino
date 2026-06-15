@@ -32,14 +32,17 @@ blob is covered by the prefix CRC, exactly like the v1.2 schema table.
 ```
 LOG       : 0x4C  n_log         n_log × 14B descriptor      (describes the fixed 16B record)
 PROFILES  : 0x50  n_profiles    [ n_data(1B)  n_data × 14B ] × n_profiles
-STATIONS  : 0x54  n_stations    [ identity(8B)  profile_ref(1B)  elevation(2B) ] × n_stations
+STATIONS  : 0x54  n_stations    [ identity(8B)  profile_ref(1B)  elevation(2B)  name(32B) ] × n_stations
 ```
 
 `elevation` is signed metres as **i16 little-endian** (`0x8000` = unknown/unset);
 it is a SEPARATE record field placed after `profile_ref`, not part of the opaque
-identity. The 8-byte identity here is the SAME station-identity model the
-single-schema format now uses — this **unifies** the station identity on the
-8-byte model (the old 6-byte region/number/reserved record is retired).
+identity. `name` is a SEPARATE fixed 32-byte human-readable label (UTF-8,
+NUL-padded, all-zero = none) placed last — StationXML `<Site><Name>` material;
+it is **prefix-once** metadata, NOT carried in each 16-byte log record. The
+8-byte identity here is the SAME station-identity model the single-schema format
+now uses — this **unifies** the station identity on the 8-byte model (the old
+6-byte region/number/reserved record is retired).
 
 The 14-byte field descriptor and `physical = (raw + offset) × 10^exp10` are the
 **same** as v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).

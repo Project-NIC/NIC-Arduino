@@ -29,15 +29,20 @@ static mla_hal_t ram_hal(ram_t *r) {
 /* one 14 B field descriptor (its content is irrelevant to a container read) */
 #define DESC(c) 0x02,0x00,0x00,0x00,0x00,0x00, (c),0,0,0,0,0,0,0
 
-/* datalogger tables: 0 log fields, 2 profiles (1 field each), 2 stations */
+/* 32 B station name (UTF-8, NUL-padded): "node-a", and an all-zero (no name) */
+#define NAME_A  'n','o','d','e','-','a', 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+#define NAME_0  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+/* datalogger tables: 0 log fields, 2 profiles (1 field each), 2 stations.
+ * Each STATION record is 43 B: id(8) + profile_ref(1) + elev(2) + name(32). */
 static const uint8_t DL_BLOB[] = {
     0x4C, 0x00,                                /* LOG: n_log = 0 */
     0x50, 0x02,                                /* PROFILES: n = 2 */
         0x01, DESC('t'),                       /*   profile 0 */
         0x01, DESC('p'),                       /*   profile 1 */
-    0x54, 0x02,                                /* STATIONS: n = 2 (id8 + ref + elev2) */
-        1,2,3,4,5,6,7,8, 0, 0xEB,0x00,         /*   station 1 -> profile 0, 235 m */
-        9,10,11,12,13,14,15,16, 1, 0x00,0x80   /*   station 2 -> profile 1, elev unknown */
+    0x54, 0x02,                                /* STATIONS: n = 2 (id8 + ref + elev2 + name32) */
+        1,2,3,4,5,6,7,8, 0, 0xEB,0x00, NAME_A, /*   station 1 -> profile 0, 235 m, "node-a" */
+        9,10,11,12,13,14,15,16, 1, 0x00,0x80, NAME_0  /* station 2 -> profile 1, elev/name unset */
 };
 
 typedef struct { int n; uint8_t sta[8]; uint8_t v0[8]; } collect_t;

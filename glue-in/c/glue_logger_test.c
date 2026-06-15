@@ -34,8 +34,11 @@ static const uint8_t SCHEMA[] = {
     2, 0, 0xFF, 0x01, 0,0, 't','e','m','p', 0,0,0,0,
     2, 0, 0xFF, 0x00, 0,0, 'h','u','m', 0,0,0,0,0,
 };
-/* 10 B/record: identity(8) = region,number,kind,reserved (u16 LE) + elev(2, i16 LE) */
-static const uint8_t STATION[] = { MLA_STATION_VER, 1, 7,0, 100,0, 0,0, 0,0,  0xEB,0x00 };
+/* 42 B/record: identity(8) = region,number,kind,reserved (u16 LE) + elev(2, i16 LE)
+ * + name(32 B UTF-8 NUL-padded). 32-byte name "node-7" then NUL padding. */
+#define STA_NAME_7  'n','o','d','e','-','7', 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+static const uint8_t STATION[] = { MLA_STATION_VER, 1,
+                                   7,0, 100,0, 0,0, 0,0,  0xEB,0x00,  STA_NAME_7 };
 
 static uint8_t TRUTH[NREC][4];
 
