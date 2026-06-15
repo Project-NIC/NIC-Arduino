@@ -21,6 +21,8 @@ pass — this is a worked converter, not a framework.
 """
 from __future__ import annotations
 
+import struct
+
 from nic_mla import MlaCore, MlaPosixHAL
 from mla_schema import mla_read_schema, mla_read_stations, mla_split_station
 from nic_dmd import DmdDecoder
@@ -92,7 +94,11 @@ class MseedExporter:
             return self.network, str(v), self.location
         sta = str(idx)
         if stations and 1 <= idx <= len(stations):
-            region, number, _ = mla_split_station(stations[idx - 1])
+            # The station record is identity(8B, opaque) + elevation(2B); we read
+            # the SEED station code from the identity, interpreting it as the
+            # hierarchical dl_ident form (region/number/kind/reserved → use number).
+            identity, _elev = mla_split_station(stations[idx - 1])
+            _region, number, _kind, _reserved = struct.unpack("<HHHH", identity)
             sta = str(number)
         return self.network, sta[:5], self.location
 

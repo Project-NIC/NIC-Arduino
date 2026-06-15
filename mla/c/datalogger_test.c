@@ -35,9 +35,9 @@ static const uint8_t DL_BLOB[] = {
     0x50, 0x02,                                /* PROFILES: n = 2 */
         0x01, DESC('t'),                       /*   profile 0 */
         0x01, DESC('p'),                       /*   profile 1 */
-    0x54, 0x02,                                /* STATIONS: n = 2 */
-        1,2,3,4,5,6,7,8, 0,                    /*   station 1 -> profile 0 */
-        9,10,11,12,13,14,15,16, 1              /*   station 2 -> profile 1 */
+    0x54, 0x02,                                /* STATIONS: n = 2 (id8 + ref + elev2) */
+        1,2,3,4,5,6,7,8, 0, 0xEB,0x00,         /*   station 1 -> profile 0, 235 m */
+        9,10,11,12,13,14,15,16, 1, 0x00,0x80   /*   station 2 -> profile 1, elev unknown */
 };
 
 typedef struct { int n; uint8_t sta[8]; uint8_t v0[8]; } collect_t;

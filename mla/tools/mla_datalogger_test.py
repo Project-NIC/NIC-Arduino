@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mla_schema import MlaField                                   # noqa: E402
 from mla_datalogger import (                                      # noqa: E402
     DataloggerBuilder, DataloggerTables, dl_gps, dl_gps_decode, dl_ident, dl_raw,
+    dl_elev, dl_elev_decode,
 )
 
 passed = total = 0
@@ -35,9 +36,9 @@ elec = b.profile([
     MlaField("power",  2, "W"),
     MlaField("energy", 4, "kWh"),
 ])
-s1 = b.station(dl_gps(50.0875, 14.4213), meteo)      # Prague meteo
-s2 = b.station(dl_gps(49.1951, 16.6068), meteo)      # Brno meteo (SAME profile)
-s3 = b.station(dl_gps(50.0875, 14.4213), elec)       # electricity, same GPS as s1
+s1 = b.station(dl_gps(50.0875, 14.4213), meteo, elev_m=235)   # Prague meteo
+s2 = b.station(dl_gps(49.1951, 16.6068), meteo, elev_m=-7)    # Brno meteo (below MSL, SAME profile)
+s3 = b.station(dl_gps(50.0875, 14.4213), elec)                # electricity, same GPS as s1, elev unknown
 blob = b.serialize()
 
 check("station indices are 1-based", (s1, s2, s3) == (1, 2, 3))
@@ -82,6 +83,15 @@ check("GPS identity round-trips (~1 cm)", abs(lat - 50.0875) < 1e-6 and abs(lon 
 check("identity is exactly 8 B", len(t.identity_for(1)) == 8)
 check("two stations can share GPS, differ by profile",
       t.identity_for(1) == t.identity_for(3) and t.stations[0][1] != t.stations[2][1])
+
+# Elevation (i16 LE metres, 0x8000 = unknown) round-trips per station
+check("elevation s1 → 235 m", t.elevation_for(1) == 235)
+check("elevation s2 → -7 m (below MSL)", t.elevation_for(2) == -7)
+check("elevation s3 → None (unknown sentinel)", t.elevation_for(3) is None)
+check("dl_elev sentinel encodes to 00 80", dl_elev(None) == b"\x00\x80")
+check("dl_elev/dl_elev_decode round-trip incl. negative/zero/None",
+      dl_elev_decode(dl_elev(-412)) == -412 and dl_elev_decode(dl_elev(0)) == 0
+      and dl_elev_decode(dl_elev(None)) is None)
 
 # Hierarchical identity encoder also fits 8 B
 check("dl_ident is 8 B", len(dl_ident(number=25000, region=55, kind=7)) == 8)
@@ -144,6 +154,8 @@ check("CSV meteo: 2 rows (s1, s2 share profile 0)", len(rows) == 2)
 check("CSV meteo: has its own columns", "temp" in rows[0] and "hum" in rows[0]
       and "power" not in rows[0])
 check("CSV meteo: value matches", abs(float(rows[0]["temp"]) - 21.50) < 1e-9)
+check("CSV meteo: elevation column present (s1 = 235 m)",
+      "elevation" in rows[0] and rows[0]["elevation"] == "235")
 
 _db = os.path.join(_outdir, "out.db")
 names = export_sqlite(_path, _db)

@@ -24,7 +24,8 @@ sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "tools"))
 
 from nic_mla import MlaCore, MlaPosixHAL
-from mla_schema import mla_read_schema, mla_read_stations, mla_decode_payload, mla_split_station
+from mla_schema import (mla_read_schema, mla_read_stations, mla_decode_payload,
+                        mla_split_station, dl_ident, dl_elev)
 
 _passed = _failed = 0
 
@@ -85,8 +86,10 @@ def main() -> int:
         stations = mla_read_stations(pfx)
         check("station table decodes (2 stations)", stations is not None and len(stations) == 2)
         if stations:
-            check("station 1 → region 55 / number 25000",
-                  mla_split_station(stations[0])[:2] == (55, 25000))
+            ident0, elev0 = mla_split_station(stations[0])
+            check("station 1 identity → dl_ident(region 55, number 25000)",
+                  ident0 == dl_ident(region=55, number=25000, reserved=0xFFFF))
+            check("station 1 elevation → 235 m", elev0 == 235)
 
         # End-to-end: decode record 0's payload through the C-written schema.
         if data_f is not None:

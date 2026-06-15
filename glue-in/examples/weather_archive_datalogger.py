@@ -22,7 +22,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from nic_glue_in import (  # noqa: E402
-    GlueArchiveLogger, ChannelBank, MlaSchemaBuilder, MlaStationTable,
+    GlueArchiveLogger, ChannelBank, MlaSchemaBuilder, MlaStationTable, dl_ident,
 )
 
 # (name, unit, width, exp10, signed, base, swing) — base/swing drive the sim.
@@ -31,7 +31,8 @@ SENSORS = [
     ("humidity", "pct",  2, -1, False,  65.0, 20.0),
 ]
 ROW_WIDTH = sum(w for _n, _u, w, *_ in SENSORS)        # 4 B — the DMD pkt_len
-STATIONS = [(55, 25000), (55, 25001)]                  # index 1..2 → region/number
+# index 1..2 → (region, number, elevation_m); identity = 8-byte dl_ident.
+STATIONS = [(55, 25000, 235), (55, 25001, 240)]
 T0, STEP, N_ROUNDS = 1_748_000_000, 900, 400
 
 
@@ -45,8 +46,8 @@ def build_schema() -> bytes:
 
 def build_stations() -> bytes:
     st = MlaStationTable()
-    for region, number in STATIONS:
-        st.station(region=region, number=number)
+    for region, number, elev_m in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m)
     return st.table()
 
 

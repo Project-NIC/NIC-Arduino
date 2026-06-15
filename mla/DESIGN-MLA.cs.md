@@ -186,13 +186,18 @@ v souboru.
 ```
 [0] sta_ver  1 B  = 0x53
 [1] n        1 B  počet stanic (1..255)
-[2 ..]       n × 6 syrových bajtů (index i v logu → záznam i-1)
+[2 ..]       n × 10 B záznamů (index i v logu → záznam i-1), každý:
+               identita(8 B)  + nadm. výška(2 B, i16 LE, metry, 0x8000 = neznámá)
 ```
 
-Těch 6 bajtů je pro MLA **neprůhledných**. Časté dělení je `region(2) +
-číslo(2) + reserved(2)`, ale rozhoduje glue (lepidlo); klidně `město/číslo/kraj`
-nebo jedno velké číslo. Lidé čísla stanic přidělují s mezerami — glue je mapuje
-na kompaktní 1bajtové indexy a zpět.
+8bajtová **identita je pro MLA neprůhledná** — sestav ji stejnými enkodéry jako
+datalogger formát (`dl_gps` = 2× i32 stupně×1e7, `dl_ident` = region/číslo/
+kind/reserved jako 4× u16, nebo `dl_raw` = 8 bajtů doslovně). Tím se identita
+stanice **sjednocuje** na 8bajtovém modelu; starý 6bajtový záznam
+region/číslo/reserved je **zrušen**. `nadmořská výška` je samostatné znaménkové
+pole v metrech (i16 LE, `0x8000` = neznámá), oddělené od neprůhledné identity.
+Lidé čísla stanic přidělují s mezerami — glue je mapuje na kompaktní 1bajtové
+indexy a zpět.
 
 > **Hloupý kontejner.** Obě tabulky se zapisují verbatim shora a C/MCU cesta je
 > nikdy nečte. Komprese, šifrování, překlad čísel stanic i transport žijí

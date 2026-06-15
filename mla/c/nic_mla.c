@@ -83,7 +83,7 @@ static uint16_t mla_datalogger_size(mla_hal_t *hal, uint32_t base) {
         total += step; off += step;
     }
     if (hal->read(hal->ctx, off, b, 2) != 0 || b[0] != 0x54u) return 0;   /* STATIONS */
-    total += 2u + 9u * (uint32_t)b[1];                                    /* 8B id + 1B ref */
+    total += 2u + 11u * (uint32_t)b[1];                          /* 8B id + 1B ref + 2B elev */
     return total <= 0xFFFFu ? (uint16_t)total : 0u;
 }
 

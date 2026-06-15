@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import re
+import struct
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
@@ -165,11 +166,22 @@ class GlueReader:
         return self._core._prefix.keyframe_intv
 
     def station_info(self, index: int) -> tuple[int, int] | None:
-        """(region, number) for a station index (1..n), or None if unresolved."""
+        """(region, number) for a station index (1..n), or None if unresolved.
+
+        The station record is identity(8B) + elevation(2B); the identity is read
+        as the hierarchical dl_ident form (region/number/kind/reserved).
+        """
         if not self._stations or not (1 <= index <= len(self._stations)):
             return None
-        region, number, _reserved = mla_split_station(self._stations[index - 1])
+        identity, _elev = mla_split_station(self._stations[index - 1])
+        region, number, _kind, _reserved = struct.unpack("<HHHH", identity)
         return region, number
+
+    def station_elevation(self, index: int) -> int | None:
+        """Signed-metres elevation for a station index (None if unresolved/unset)."""
+        if not self._stations or not (1 <= index <= len(self._stations)):
+            return None
+        return mla_split_station(self._stations[index - 1])[1]
 
     # ── decompression (NIC-DMD) ────────────────────────────────────────────────
     def _decompress_all(self) -> list:

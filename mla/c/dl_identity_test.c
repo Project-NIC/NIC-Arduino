@@ -39,12 +39,33 @@ int main(int argc, char **argv) {
     dl_raw(raw, rout);
     ok("raw is verbatim", memcmp(raw, rout, 8) == 0);
 
+    /* dl_elev — i16 LE metres, round-trips incl. negative / zero / sentinel */
+    uint8_t e235[2], eneg[2], ezero[2], eunk[2];
+    dl_elev(235, e235);
+    dl_elev(-412, eneg);
+    dl_elev(0, ezero);
+    dl_elev(DL_ELEV_UNKNOWN, eunk);
+    ok("elev 235 m bytes (EB 00)", e235[0] == 0xEB && e235[1] == 0x00);
+    ok("elev -412 m bytes (64 FE)", eneg[0] == 0x64 && eneg[1] == 0xFE);
+    ok("elev sentinel bytes (00 80)", eunk[0] == 0x00 && eunk[1] == 0x80);
+    ok("elev round-trips (235/-412/0/unknown)",
+       dl_elev_decode(e235) == 235 && dl_elev_decode(eneg) == -412 &&
+       dl_elev_decode(ezero) == 0 && dl_elev_decode(eunk) == DL_ELEV_UNKNOWN);
+
     printf("\n%s\n", fails ? "=== FAILED ===" : "=== ALL OK ===");
 
-    /* hand the canonical dl_gps + dl_ident bytes to the Python cross-check */
+    /* hand the canonical dl_gps + dl_ident + elevation bytes to the cross-check */
     if (argc > 1) {
         FILE *f = fopen(argv[1], "wb");
-        if (f) { fwrite(id_gps, 1, 8, f); fwrite(id_ident, 1, 8, f); fclose(f); }
+        if (f) {
+            fwrite(id_gps, 1, 8, f);
+            fwrite(id_ident, 1, 8, f);
+            fwrite(e235, 1, 2, f);     /* +235 m */
+            fwrite(eneg, 1, 2, f);     /* -412 m */
+            fwrite(ezero, 1, 2, f);    /*    0 m */
+            fwrite(eunk, 1, 2, f);     /* unknown (0x8000) */
+            fclose(f);
+        }
     }
     return fails ? 1 : 0;
 }

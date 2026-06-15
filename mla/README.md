@@ -117,13 +117,15 @@ Self-describing file (schema + station tables → ready for CSV/SQL export):
 
 ```python
 from mla_schema import MlaSchemaBuilder, MlaStationTable, mla_read_schema, \
-                       mla_read_stations, mla_decode_payload, mla_split_station
+                       mla_read_stations, mla_decode_payload, mla_split_station, dl_ident
 
 sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
 sb.data("hum",  unit="pct",  width=2, exp10=-1)
 st = MlaStationTable()
-st.station(region=55, number=25000)          # log index 1 → this station
+# Station record = identity(8B) + elevation(2B). Build the identity with
+# dl_ident / dl_gps / dl_raw; elevation is signed metres (None = unknown).
+st.station(dl_ident(region=55, number=25000), elev_m=235)   # log index 1 → this station
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -131,13 +133,13 @@ with hal:
     mla.format(schema_table=sb.table(), station_table=st.table())
     mla.append(ts, station=1, data=temp.to_bytes(2,"little",signed=True)+hum.to_bytes(2,"little"))
 
-# Any reader recovers names, units and the real station number — no prior knowledge:
+# Any reader recovers names, units, the station identity + elevation — no prior knowledge:
 with MlaPosixHAL("log.mla") as hal:
     mla = MlaCore(hal); mla.mount()
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        region, number, _ = mla_split_station(stations[rec.station - 1])
+        identity, elev_m = mla_split_station(stations[rec.station - 1])  # 8 opaque bytes + metres
         cols = mla_decode_payload(fields, data)   # [(name, unit, value), …]
 ```
 
@@ -175,11 +177,12 @@ See **[`c/README.md`](c/README.md)**.
 
 ## Notes for integrators
 
-- **Station names are not in the file.** The STATION table stores only 6 raw
-  bytes per station; what they mean (region / number / city / …) is decided by
-  your glue layer, which keeps its own mapping "6 bytes → meaning". The log
-  carries just a 1-byte index — translating it to a real station number is the
-  glue's job, not the container's.
+- **Station names are not in the file.** The STATION table stores an 8-byte
+  opaque identity + a 2-byte elevation (i16 LE, metres) per station; what the
+  identity means (region / number / GPS / …) is decided by your glue layer,
+  which keeps its own mapping "8 bytes → meaning". The log carries just a 1-byte
+  index — translating it to a real station number is the glue's job, not the
+  container's.
 - **The `subsec` field is two opaque bytes the glue owns.** MLA assigns them no
   meaning and never touches them. The name reads both ways on purpose: sub-**sec**ond
   time *and* sub-**sec**tion (e.g. a rotation / section index). Your glue may use

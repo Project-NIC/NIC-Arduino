@@ -26,7 +26,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from nic_glue_in import (  # noqa: E402
-    GlueLogger, MlaSchemaBuilder, MlaStationTable,
+    GlueLogger, MlaSchemaBuilder, MlaStationTable, dl_ident,
 )
 
 # DATA schema — one entry per sensor value, packed back to back in this order.
@@ -39,7 +39,9 @@ SENSORS = [
 ]
 ROW_WIDTH = sum(width for _n, _u, width, *_ in SENSORS)   # 8 B — the DMD pkt_len
 
-STATIONS = [(55, 25000), (55, 25001), (55, 25777)]        # index 1..3 → region/number
+# index 1..3 → (region, number, elevation_m). The identity is the 8-byte
+# dl_ident(region, number); elevation is a separate signed-metres field.
+STATIONS = [(55, 25000, 235), (55, 25001, 240), (55, 25777, 198)]
 
 T0 = 1_748_000_000   # base unix time (~2025)
 STEP = 900           # 15 min between samples
@@ -56,8 +58,8 @@ def build_schema() -> bytes:
 
 def build_stations() -> bytes:
     st = MlaStationTable()
-    for region, number in STATIONS:
-        st.station(region=region, number=number)
+    for region, number, elev_m in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m)
     return st.table()
 
 

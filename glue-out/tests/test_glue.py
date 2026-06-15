@@ -25,7 +25,7 @@ import nic_glue_out  # noqa: E402  — also puts third_party on sys.path
 from nic_glue_out import GlueReader, GlueArchiveReader  # noqa: E402
 from nic_mla import MlaCore, MlaPosixHAL  # noqa: E402
 from nic_mla_archive import MlaArchive  # noqa: E402
-from mla_schema import MlaSchemaBuilder, MlaStationTable  # noqa: E402
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident  # noqa: E402
 from nic_dmd import DmdEncoder  # noqa: E402
 
 
@@ -40,7 +40,7 @@ def _build(path: str) -> None:
     sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
     sb.data("humidity", unit="pct", width=2, exp10=-1)
     st = MlaStationTable()
-    st.station(region=7, number=100)
+    st.station(dl_ident(region=7, number=100), elev_m=235)
 
     hal = MlaPosixHAL.create(path, file_size=64 * 1024)
     with hal:
@@ -105,7 +105,7 @@ def test_compressed_stream_roundtrip():
         sb.log("datetime")
         sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
         sb.data("humidity", unit="pct", width=2, exp10=-1)
-        st = MlaStationTable(); st.station(region=7, number=100)
+        st = MlaStationTable(); st.station(dl_ident(region=7, number=100), elev_m=235)
         truth = [(int(200 + 50 * math.sin(i / 4.0)), int(500 + i)) for i in range(40)]
 
         hal = MlaPosixHAL.create(path, file_size=64 * 1024)
@@ -212,7 +212,7 @@ def test_archive_reader_concatenates_rotated_files():
     sb = MlaSchemaBuilder(); sb.log("datetime")
     sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
     sb.data("humidity", unit="pct", width=2, exp10=-1)
-    st = MlaStationTable(); st.station(region=7, number=100)
+    st = MlaStationTable(); st.station(dl_ident(region=7, number=100), elev_m=235)
     n = 200
     truth = [(200 + i, 500 + i) for i in range(n)]
 

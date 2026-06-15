@@ -19,6 +19,9 @@
 
 #define DL_IDENT_LEN 8u
 
+/* Elevation sentinel: i16 0x8000 (INT16_MIN) = unknown/unset. */
+#define DL_ELEV_UNKNOWN ((int16_t)0x8000)
+
 /*
  * GPS — latitude + longitude as 2× i32, degrees × 1e7 (~1 cm). This is the form a
  * u-blox / UM980 already reports, so no float is needed on the write path.
@@ -34,7 +37,12 @@ static inline void dl_gps_decode(const uint8_t in[DL_IDENT_LEN],
     *lon_e7 = (int32_t)mla_get_u32(in + 4);
 }
 
-/* Hierarchical — region + number + kind + reserved, 4× u16 (in that byte order). */
+/*
+ * Hierarchical — region + number + kind + reserved, 4× u16 (in that byte order).
+ * The reserved u16 pads this form to the uniform 8-byte identity (like the GPS
+ * lat+lon and the raw form), keeping the station record fixed-size; it is held
+ * for a future hierarchical-identity extension, not spare padding to reuse.
+ */
 static inline void dl_ident(uint16_t region, uint16_t number, uint16_t kind,
                             uint16_t reserved, uint8_t out[DL_IDENT_LEN]) {
     mla_put_u16(out + 0, region);
@@ -46,6 +54,19 @@ static inline void dl_ident(uint16_t region, uint16_t number, uint16_t kind,
 /* Raw — 8 bytes verbatim (the glue assigns the meaning). */
 static inline void dl_raw(const uint8_t in[DL_IDENT_LEN], uint8_t out[DL_IDENT_LEN]) {
     for (unsigned i = 0; i < DL_IDENT_LEN; i++) out[i] = in[i];
+}
+
+/*
+ * Elevation — signed metres as i16 little-endian (2 B). A SEPARATE station-record
+ * field, placed after the identity (and after profile_ref in the datalogger
+ * table); it is NOT part of the opaque identity. Pass DL_ELEV_UNKNOWN (0x8000,
+ * INT16_MIN) when the elevation is unknown/unset. Range ±32767 m, 1 m resolution.
+ */
+static inline void dl_elev(int16_t metres, uint8_t out[2]) {
+    mla_put_u16(out, (uint16_t)metres);
+}
+static inline int16_t dl_elev_decode(const uint8_t in[2]) {
+    return (int16_t)mla_get_u16(in);
 }
 
 #endif /* NIC_DL_IDENTITY_H */

@@ -23,7 +23,7 @@ for _p in (_MLA_DIR, os.path.join(_MLA_DIR, "tools"), os.path.join(_TP, "nic_dmd
         sys.path.insert(0, _p)
 
 from nic_mla import MlaCore, MlaPosixHAL  # noqa: E402
-from mla_schema import MlaSchemaBuilder, MlaStationTable  # noqa: E402
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident  # noqa: E402
 from nic_dmd import DmdEncoder  # noqa: E402
 
 REPO_ROOT = _ROOT
@@ -73,7 +73,7 @@ def make_temp_mla_schema(t0=1_748_000_000, step=900) -> str:
     for name, unit, width, exp10, signed in SCHEMA_SENSORS:
         sb.data(name, unit=unit, width=width, exp10=exp10, signed=signed)
     st = MlaStationTable()
-    st.station(region=SCHEMA_STATION[0], number=SCHEMA_STATION[1])
+    st.station(dl_ident(region=SCHEMA_STATION[0], number=SCHEMA_STATION[1]), elev_m=235)
 
     rows = [(235, 600), (-15, 612), (0, 999)]  # raw int16 pairs (temp, humidity)
     fd, path = tempfile.mkstemp(suffix=".mla")
@@ -108,7 +108,7 @@ def make_temp_mla_compressed(t0=1_748_000_000, step=900) -> str:
     for name, unit, width, exp10, signed in SCHEMA_SENSORS:
         sb.data(name, unit=unit, width=width, exp10=exp10, signed=signed)
     st = MlaStationTable()
-    st.station(region=SCHEMA_STATION[0], number=SCHEMA_STATION[1])
+    st.station(dl_ident(region=SCHEMA_STATION[0], number=SCHEMA_STATION[1]), elev_m=235)
 
     fd, path = tempfile.mkstemp(suffix=".mla")
     os.close(fd)

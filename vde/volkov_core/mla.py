@@ -37,6 +37,7 @@ try:
     from mla_schema import (  # noqa: E402
         mla_read_schema, mla_decode_value as _decode_field,
         mla_read_stations, mla_split_station, MlaSchemaBuilder, MlaStationTable,
+        dl_ident, dl_elev,
     )
     from nic_dmd import DmdDecoder  # noqa: E402
 except Exception as exc:  # pragma: no cover - only if vendoring is broken
@@ -431,10 +432,15 @@ class VdeMlaBackend(VdeBackend):
                 for f in (self._data_fields or [])]
 
     def station_view(self) -> list[dict]:
-        """Editable view of the station table (index 1..n → region/number)."""
+        """Editable view of the station table (index 1..n → region/number).
+
+        The identity is read as dl_ident (region/number/kind/reserved); the
+        elevation field stays preserved across edits (see edit_station).
+        """
         out = []
         for i, rec in enumerate(self._stations.records, start=1):
-            region, number, _res = mla_split_station(rec)
+            identity, _elev = mla_split_station(rec)
+            region, number, _kind, _res = struct.unpack("<HHHH", identity)
             out.append({"index": i, "region": region, "number": number})
         return out
 
@@ -455,16 +461,18 @@ class VdeMlaBackend(VdeBackend):
         self._rewrite_tables(data_fields=fields)
 
     def edit_station(self, i: int, *, region: int, number: int) -> None:
-        """Change one station's region/number (0-based i); reserved preserved."""
+        """Change one station's region/number (0-based i); kind/reserved/elevation preserved."""
         recs = self._stations.records
         if not (0 <= i < len(recs)):
             raise VdeBackendError("No such station")
-        _r, _n, reserved = mla_split_station(recs[i])
+        identity, elev = mla_split_station(recs[i])
+        _r, _n, kind, reserved = struct.unpack("<HHHH", identity)
         try:
             st = MlaStationTable()
             for j, rec in enumerate(recs):
                 if j == i:
-                    st.station(region=region, number=number, reserved=reserved)
+                    st.station(dl_ident(region=region, number=number,
+                                        kind=kind, reserved=reserved), elev_m=elev)
                 else:
                     st.raw(rec)
             new_station = st.table()

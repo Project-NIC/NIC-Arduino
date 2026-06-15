@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import nic_glue_in  # noqa: E402  — also puts third_party on sys.path
 from nic_glue_in import (  # noqa: E402
     GlueLogger, GlueArchiveLogger, ChannelBank, MlaSchemaBuilder, MlaStationTable,
-    DMD_KEYFRAME_EVERY,
+    DMD_KEYFRAME_EVERY, dl_ident,
 )
 import glob  # noqa: E402
 from nic_dmd import DmdDecoder  # noqa: E402
@@ -38,7 +38,7 @@ def _schema_stations():
     for name in ("a", "b", "c", "d"):
         sb.data(name, unit="raw", width=2)
     st = MlaStationTable()
-    st.station(region=1, number=100)
+    st.station(dl_ident(region=1, number=100), elev_m=120)
     return sb.table(), st.table()
 
 
@@ -147,8 +147,8 @@ def test_archive_rotation_files_independently_decodable():
     """
     schema, _ = _schema_stations()
     st = MlaStationTable()
-    st.station(region=1, number=100)
-    st.station(region=2, number=200)
+    st.station(dl_ident(region=1, number=100), elev_m=120)
+    st.station(dl_ident(region=2, number=200), elev_m=305)
     n = 200
     rows1 = [bytes([(i * 7) & 0xFF, i & 0xFF]) * (ROW_WIDTH // 2) for i in range(n)]
     rows2 = [bytes([(i * 3) & 0xFF, (i * 2) & 0xFF]) * (ROW_WIDTH // 2) for i in range(n)]

@@ -14,7 +14,7 @@ import nic_mseed  # noqa: E402  — puts third_party (nic_mla, nic_dmd) on sys.p
 from nic_mseed import MseedExporter
 from nic_mseed.mseed import read_stream
 from nic_mla import MlaCore, MlaPosixHAL
-from mla_schema import MlaSchemaBuilder, MlaStationTable
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident
 from nic_dmd import DmdEncoder
 
 _p = _f = 0
@@ -32,8 +32,8 @@ def _schema_stations():
     sb.data("z", unit="raw", width=2, signed=True)
     sb.data("n", unit="raw", width=2, signed=True)
     st = MlaStationTable()
-    st.station(region=55, number=25000)    # index 1 — raw
-    st.station(region=55, number=25001)    # index 2 — compressed
+    st.station(dl_ident(region=55, number=25000), elev_m=235)   # index 1 — raw
+    st.station(dl_ident(region=55, number=25001), elev_m=240)   # index 2 — compressed
     return sb.table(), st.table()
 
 

@@ -21,7 +21,7 @@ import nic_mseed  # noqa: E402  — puts third_party (nic_mla, nic_dmd) on sys.p
 from nic_mseed import MseedExporter, STEIM2
 from nic_mseed.mseed import read_stream
 from nic_mla import MlaCore, MlaPosixHAL
-from mla_schema import MlaSchemaBuilder, MlaStationTable
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident
 from nic_dmd import DmdEncoder
 
 RATE = 100.0          # Hz — device ODR
@@ -36,7 +36,7 @@ def build_sample(path: str) -> None:
     sb.data("n", unit="raw", width=2, signed=True)
     sb.data("e", unit="raw", width=2, signed=True)
     st = MlaStationTable()
-    st.station(region=55, number=25000)
+    st.station(dl_ident(region=55, number=25000), elev_m=235)
 
     hal = MlaPosixHAL.create(path, file_size=512 * 1024)
     with hal:

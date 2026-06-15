@@ -326,7 +326,7 @@ class MlaSubsecExportTests(unittest.TestCase):
     def setUp(self):
         sb = helpers.MlaSchemaBuilder(); sb.log("datetime")
         sb.data("t", unit="pct", width=1)
-        st = helpers.MlaStationTable(); st.station(region=7, number=100)
+        st = helpers.MlaStationTable(); st.station(helpers.dl_ident(region=7, number=100))
         fd, self.path = tempfile.mkstemp(suffix=".mla"); os.close(fd)
         with helpers.MlaPosixHAL.create(self.path, file_size=16 * 1024) as hal:
             core = helpers.MlaCore(hal)

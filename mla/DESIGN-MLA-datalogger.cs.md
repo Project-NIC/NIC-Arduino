@@ -32,8 +32,14 @@ je krytý CRC prefixu, přesně jako v1.2 schema tabulka.
 ```
 LOG       : 0x4C  n_log         n_log × 14B descriptor      (popisuje pevný 16B paket)
 PROFILY   : 0x50  n_profilů     [ n_data(1B)  n_data × 14B ] × n_profilů
-STANICE   : 0x54  n_stanic      [ identita(8B)  odkaz(1B) ] × n_stanic
+STANICE   : 0x54  n_stanic      [ identita(8B)  odkaz(1B)  nadm. výška(2B) ] × n_stanic
 ```
+
+`nadmořská výška` je znaménkové metry jako **i16 little-endian** (`0x8000` =
+neznámá/nenastavená); je to SAMOSTATNÉ pole záznamu za `odkaz`em, není součástí
+neprůhledné identity. 8bajtová identita je TENTÝŽ model identity stanice, který
+teď používá i jednoschématový formát — tím se identita stanice **sjednocuje** na
+8bajtovém modelu (starý 6bajtový záznam region/number/reserved je zrušen).
 
 14bajtový descriptor pole a `fyzikální = (raw + offset) × 10^exp10` jsou **stejné**
 jako ve v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).

@@ -59,10 +59,13 @@ static const uint8_t SCHEMA[] = {
     /* hum:  width2 unit4(pct) exp-1 flags0 off0 + "hum\0\0\0\0\0" */
     0x02,0x04,0xFF,0x00,0x00,0x00, 'h','u','m',0,0,0,0,0
 };
+/* Each station = identity(8B) + elevation(2B i16 LE). The 8-byte identity here
+ * matches dl_ident(region, number, kind, reserved): region(2) number(2)
+ * kind(2) reserved(2). Elevations: +235 m and +240 m. */
 static const uint8_t STATION[] = {
     0x53, 0x02,                                        /* tag, n=2 */
-    55,0, 0xA8,0x61, 0xFF,0xFF,                         /* region 55, number 25000 */
-    55,0, 0xA9,0x61, 0xFF,0xFF                          /* region 55, number 25001 */
+    55,0, 0xA8,0x61, 0,0, 0xFF,0xFF,  0xEB,0x00,        /* region 55, number 25000, 235 m */
+    55,0, 0xA9,0x61, 0,0, 0xFF,0xFF,  0xF0,0x00         /* region 55, number 25001, 240 m */
 };
 
 /* ─────────────────────────────────────────────────────────────────────────── */
