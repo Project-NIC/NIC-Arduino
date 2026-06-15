@@ -30,9 +30,11 @@ for _p in (os.path.join(_TP, "nic_mla"), os.path.join(_TP, "nic_dmd")):
 from .steim import STEIM1, STEIM2, encode, decode, encode_record, decode_record  # noqa: E402
 from .mseed import write_stream, read_stream, rate_factor_mult  # noqa: E402
 from .from_mla import MseedExporter, export_mla_to_mseed  # noqa: E402
+from .to_stationxml import StationXmlExporter, export_mla_to_stationxml  # noqa: E402
 
 __all__ = [
     "MseedExporter", "export_mla_to_mseed",
+    "StationXmlExporter", "export_mla_to_stationxml",
     "STEIM1", "STEIM2",
     "encode", "decode", "encode_record", "decode_record",
     "write_stream", "read_stream", "rate_factor_mult",

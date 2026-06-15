@@ -55,6 +55,7 @@ python3 examples/mla_to_mseed.py            # builds a sample .mla, converts, pr
 python3 tests/test_steim.py                 # Steim-1/2 codec round-trip
 python3 tests/test_mseed.py                 # miniSEED writer (+ ObsPy gold-standard if installed)
 python3 tests/test_from_mla.py              # end-to-end MLA(+DMD) → miniSEED round-trip
+python3 tests/test_to_stationxml.py         # StationXML metadata (+ ObsPy schema check if installed)
 ```
 
 ## How MLA maps to miniSEED
@@ -71,6 +72,48 @@ Each `(station, field)` becomes one miniSEED channel. The converter assumes an
 evenly-sampled, contiguous series per channel (true for synchronised acquisition,
 e.g. **NIC-Quake**); gap-splitting is left to a later pass.
 
+## StationXML metadata sidecar
+
+miniSEED carries the *data*; FDSN tools also need the *metadata* — station
+identity, coordinates, sample rate, and the count→physical sensitivity. That is
+**StationXML**, and `nic_mseed/to_stationxml.py` emits it (FDSN StationXML 1.1):
+
+```python
+from nic_mseed import StationXmlExporter
+
+StationXmlExporter(
+    sample_rate_hz=100.0,        # MUST match the rate used for the miniSEED export
+    network="NQ",                # same constructor args as MseedExporter
+).export("quake.mla", "quake.xml")
+```
+
+It **pairs with the miniSEED**: the Network/Station/Location/Channel (NSLC) codes
+and the sample rate are taken from the *same* `MseedExporter` `from_mla.py` uses,
+so ObsPy / SeisComp attach the metadata to the data by construction. The MLA
+prefix supplies the rest: the GPS identity (`dl_gps`) → Latitude/Longitude, the
+i16 field → Elevation, the 32-byte name → `<Site><Name>`, and each DATA field's
+`exp10` → an `<InstrumentSensitivity>` (overall gain = counts per physical unit =
+`10**-exp10`) with the field's unit (`m_s`→`m/s`, `degC`, `Pa`, …) as input and
+`count` as output.
+
+Two honest limitations (also stated in the module and in the XML):
+
+- **Flat response.** Each channel carries only an `<InstrumentSensitivity>` (a
+  scalar DC gain) — no poles/zeros / stage cascade, because MLA does not carry a
+  frequency response. Exact for flat meteo sensors; a first-order approximation
+  for the MEMS seismo channels. It is **not** sufficient for true instrument
+  deconvolution.
+- **Coordinates need a GPS identity.** Latitude/Longitude come from a `dl_gps`
+  identity. A hierarchical `dl_ident` identity carries no coordinates — pass a
+  `coords={index: (lat, lon)}` override, or the emitter raises (it never silently
+  writes 0,0). An unknown elevation (the 0x8000 sentinel) is written as a
+  placeholder `0`.
+
+```bash
+python3 -m nic_mseed.to_stationxml quake.mla quake.xml --rate 100 --network NQ
+python3 tests/test_to_stationxml.py         # emitter + pairing (+ ObsPy schema check if installed)
+```
+
 ## Validation
 
 The codec and writer round-trip through this package's own minimal reader. The
@@ -81,10 +124,10 @@ spec-compliance.
 ## Layout
 
 ```
-nic_mseed/          Python: steim (codec) + mseed (record writer) + from_mla (converter)
+nic_mseed/          Python: steim (codec) + mseed (writer) + from_mla (converter) + to_stationxml (metadata)
 c/                  C: portable Steim-1/2 codec + miniSEED writer (+ tests, CMake)
 examples/           runnable MLA → miniSEED demo
-tests/              codec round-trip, writer, and end-to-end converter tests
+tests/              codec round-trip, writer, end-to-end converter, and StationXML tests
 third_party/        vendored NIC-MLA + NIC-DMD (see VENDORED.md)
 ```
 
