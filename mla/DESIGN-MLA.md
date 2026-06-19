@@ -379,6 +379,11 @@ MLA is a dumb container; the following are deliberately **not** its job:
   the glue's choice.
 - **File rotation** across many files — platform glue over the filesystem
   (`MlaArchive` in Python); each file is independently mountable via `file_seq`.
+  The glue may also **name each file by its `first_ts`** (e.g. a `YYYYMMDD` date stamp) so the
+  directory listing is a self-evident time index for store-and-forward catch-up. This is a
+  *naming policy only* — `file_seq` and the header (incl. the proposed v1.2 `first_ts`) stay
+  authoritative, since the clock can be unset at create time (pre-GPS cold boot) and FAT 8.3
+  limits short names (fall back to the `file_seq` name, optionally rename once time is known).
 
 This separation keeps MLA small enough for an ATmega (write-only, 16 B log, one
 512 B prefix sector) while letting a capable host build an arbitrarily smart
