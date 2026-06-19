@@ -155,6 +155,13 @@ is **one 512 B sector**; if the tables don't fit it grows in whole 512 B sectors
 [end-2] mla_crc16         2 B   LE  — over everything before it
 ```
 
+> **Proposed v1.2 (uplink backfill).** The reserved 8 B at **[12]** are earmarked for
+> `first_ts` (4 B, Unix seconds of the file's first LOG record) + `last_ts` (4 B, stamped on
+> rotation/close; 0 while the file is live). This lets a store-and-forward uplink narrow a
+> catch-up to the right rotation file from the **header alone**, without opening each file's
+> LOG. Non-breaking: v1.1 writes [12] = 0 and readers fall back to probing each file's first
+> LOG record. See NIC-Station `SESSION_HANDOFF.md` §11 / core `DESIGN.md` D30.
+
 ### 3.1 SCHEMA table — field names/units for CSV/SQL
 
 Built/read by `tools/mla_schema.py`. Lets any reader export records to CSV/SQL
