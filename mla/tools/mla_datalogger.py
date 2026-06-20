@@ -21,58 +21,36 @@ self-sizing, so a reader walks them in order):
 
     LOG       : DL_LOG_VER(1) n_log(1)   n_log × 14 B
     PROFILES  : DL_PROF_VER(1) n_prof(1)  [ n_data(1) n_data × 14 B ] × n_prof
-    STATIONS  : DL_STA_VER(1) n_sta(1)    [ identity(8 B) profile_ref(1 B) ] × n_sta
+    STATIONS  : DL_STA_VER(1) n_sta(1)    [ identity(8 B) profile_ref(1 B)
+                                            elev(2 B) name(32 B) ] × n_sta
+
+The 8-byte opaque identity, the i16-LE metres elevation (0x8000 = unknown) and
+the 32-byte UTF-8 name (NUL-padded, all-zero = none) are the SAME station model
+the single-schema format uses; the encoders (dl_gps / dl_ident / dl_raw /
+dl_elev) live in mla_schema and are re-exported here for back-compat.
 
 Python 3.10+   |   MIT   |   ★ Viva La Resistánce ★
 """
 from __future__ import annotations
 
 import os
-import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mla_schema import (                       # noqa: E402
     MlaField, MLA_FIELD_SIZE, MLA_SCHEMA_PRESETS,
     mla_encode_payload, mla_decode_payload,
+    # Station identity + elevation + name — ONE shared definition (re-exported
+    # here so `from mla_datalogger import dl_gps, …` keeps working for callers).
+    DL_IDENT_LEN, MLA_ELEV_UNKNOWN, MLA_ELEV_LEN, MLA_STA_NAME_LEN,
+    dl_gps, dl_gps_decode, dl_ident, dl_raw, dl_elev, dl_elev_decode,
+    _sta_name_bytes, _sta_name_decode,
 )
 
 # ── Format tags (distinct from the v1.2 schema/station tags) ────────────────
 DL_LOG_VER   = 0x4C    # 'L'
 DL_PROF_VER  = 0x50    # 'P'
 DL_STA_VER   = 0x54    # 'T'
-DL_IDENT_LEN = 8       # opaque station identity, 4-byte aligned
-
-
-# ── Identity encoders (the 8 bytes are opaque to MLA; glue gives them meaning) ─
-def dl_gps(lat_deg: float, lon_deg: float) -> bytes:
-    """Latitude + longitude as 2× i32 (degrees × 1e7, ~1 cm). 8 B."""
-    lat = round(lat_deg * 1e7)
-    lon = round(lon_deg * 1e7)
-    if not (-(1 << 31) <= lat < (1 << 31) and -(1 << 31) <= lon < (1 << 31)):
-        raise ValueError("gps out of i32 range")
-    return struct.pack("<ii", lat, lon)
-
-
-def dl_gps_decode(ident: bytes) -> tuple[float, float]:
-    lat, lon = struct.unpack("<ii", ident)
-    return lat / 1e7, lon / 1e7
-
-
-def dl_ident(number: int = 0, region: int = 0, kind: int = 0,
-             reserved: int = 0) -> bytes:
-    """Hierarchical identity: region(2) + number(2) + kind(2) + reserved(2). 8 B."""
-    for nm, v in (("region", region), ("number", number),
-                  ("kind", kind), ("reserved", reserved)):
-        if not 0 <= v <= 0xFFFF:
-            raise ValueError(f"{nm} out of u16 range: {v}")
-    return struct.pack("<HHHH", region, number, kind, reserved)
-
-
-def dl_raw(eight: bytes) -> bytes:
-    if len(eight) != DL_IDENT_LEN:
-        raise ValueError(f"identity must be {DL_IDENT_LEN} B, got {len(eight)}")
-    return bytes(eight)
 
 
 # ── Builder ─────────────────────────────────────────────────────────────────
@@ -82,7 +60,8 @@ class DataloggerBuilder:
     def __init__(self) -> None:
         self.log_fields: list[MlaField] = []
         self.profiles:   list[list[MlaField]] = []
-        self.stations:   list[tuple[bytes, int]] = []
+        # (identity8, profile_ref, elev_m, name)
+        self.stations:   list[tuple[bytes, int, int | None, str]] = []
 
     # global LOG schema (describes the fixed 16 B record)
     def log(self, field) -> "DataloggerBuilder":
@@ -104,15 +83,22 @@ class DataloggerBuilder:
         self.profiles.append(list(fields))
         return len(self.profiles) - 1
 
-    # one station = 8 B identity + which profile it uses; returns 1-based index
-    def station(self, identity: bytes, profile_ref: int) -> int:
+    # one station = 8 B identity + profile ref + i16 elevation + 32 B name;
+    # returns 1-based index
+    def station(self, identity: bytes, profile_ref: int,
+                elev_m: int | None = None, name: str = "") -> int:
+        """Add a station. ``identity`` is 8 opaque bytes (dl_gps / dl_ident /
+        dl_raw); ``elev_m`` is signed metres, None → the 0x8000 sentinel;
+        ``name`` is a human label (UTF-8, ≤32 B, NUL-padded; "" = none)."""
         if len(identity) != DL_IDENT_LEN:
             raise ValueError(f"identity must be {DL_IDENT_LEN} B")
         if not 0 <= profile_ref < len(self.profiles):
             raise ValueError(f"profile_ref {profile_ref} out of range")
         if len(self.stations) >= 255:
             raise ValueError("at most 255 stations (1-byte index)")
-        self.stations.append((bytes(identity), profile_ref))
+        dl_elev(elev_m)                          # validate range early
+        _sta_name_bytes(name)                    # validate length early (≤32 B)
+        self.stations.append((bytes(identity), profile_ref, elev_m, name))
         return len(self.stations)
 
     def serialize(self) -> bytes:
@@ -126,8 +112,8 @@ class DataloggerBuilder:
             for f in prof:
                 out += f.descriptor()
         out += bytes([DL_STA_VER, len(self.stations)])
-        for ident, ref in self.stations:
-            out += ident + bytes([ref])
+        for ident, ref, elev_m, name in self.stations:
+            out += ident + bytes([ref]) + dl_elev(elev_m) + _sta_name_bytes(name)
         return bytes(out)
 
 
@@ -138,7 +124,7 @@ class DataloggerTables:
     def __init__(self, log_fields, profiles, stations):
         self.log_fields = log_fields            # list[MlaField]
         self.profiles   = profiles              # list[list[MlaField]]
-        self.stations   = stations              # list[(identity8, profile_ref)]
+        self.stations   = stations              # list[(identity8, profile_ref, elev_m, name)]
 
     @classmethod
     def parse(cls, blob: bytes) -> "DataloggerTables":
@@ -173,9 +159,11 @@ class DataloggerTables:
         for _ in range(n_sta):
             ident = bytes(blob[pos:pos + DL_IDENT_LEN]); pos += DL_IDENT_LEN
             ref = blob[pos]; pos += 1
+            elev_m = dl_elev_decode(blob[pos:pos + MLA_ELEV_LEN]); pos += MLA_ELEV_LEN
+            name = _sta_name_decode(blob[pos:pos + MLA_STA_NAME_LEN]); pos += MLA_STA_NAME_LEN
             if ref >= len(profiles):
                 raise ValueError(f"station references profile {ref} (have {len(profiles)})")
-            stations.append((ident, ref))
+            stations.append((ident, ref, elev_m, name))
         return cls(log_fields, profiles, stations)
 
     # profile (column layout) for a 1-based log station index
@@ -188,6 +176,18 @@ class DataloggerTables:
         if not 1 <= station_index <= len(self.stations):
             raise ValueError(f"station index {station_index} out of range")
         return self.stations[station_index - 1][0]
+
+    def elevation_for(self, station_index: int) -> int | None:
+        """Signed-metres elevation for a 1-based station index (None if unset)."""
+        if not 1 <= station_index <= len(self.stations):
+            raise ValueError(f"station index {station_index} out of range")
+        return self.stations[station_index - 1][2]
+
+    def name_for(self, station_index: int) -> str:
+        """Human-readable name for a 1-based station index ("" if unset)."""
+        if not 1 <= station_index <= len(self.stations):
+            raise ValueError(f"station index {station_index} out of range")
+        return self.stations[station_index - 1][3]
 
     def encode(self, station_index: int, values) -> bytes:
         """Pack a data payload for the station's own profile."""
@@ -217,7 +217,7 @@ def read_mla(path: str):
     return tables, recs
 
 
-_EXPORT_BASE = ["timestamp", "subsec", "station", "identity"]
+_EXPORT_BASE = ["timestamp", "subsec", "station", "identity", "elevation", "name"]
 
 
 def _rows_by_profile(tables: "DataloggerTables", recs):
@@ -227,7 +227,9 @@ def _rows_by_profile(tables: "DataloggerTables", recs):
         ref = tables.stations[rec.station - 1][1]
         fields = tables.profiles[ref]
         row = {"timestamp": rec.timestamp, "subsec": rec.subsec,
-               "station": rec.station, "identity": tables.identity_for(rec.station).hex()}
+               "station": rec.station, "identity": tables.identity_for(rec.station).hex(),
+               "elevation": tables.elevation_for(rec.station),
+               "name": tables.name_for(rec.station)}
         for name, _unit, val in mla_decode_payload(fields, payload):
             row[name] = val
         groups.setdefault(ref, (fields, []))[1].append(row)
@@ -281,9 +283,9 @@ if __name__ == "__main__":
         MlaField("power",  2, "W"),
         MlaField("energy", 4, "kWh"),
     ])
-    b.station(dl_gps(50.0875, 14.4213), meteo)   # 1: Prague meteo
-    b.station(dl_gps(49.1951, 16.6068), meteo)   # 2: Brno meteo (same profile)
-    b.station(dl_gps(50.0875, 14.4213), elec)    # 3: electricity, same GPS as #1
+    b.station(dl_gps(50.0875, 14.4213), meteo, elev_m=235, name="Praha meteo")  # 1
+    b.station(dl_gps(49.1951, 16.6068), meteo, elev_m=237, name="Brno meteo")   # 2 (same profile)
+    b.station(dl_gps(50.0875, 14.4213), elec)               # 3: electricity, elev/name unset
 
     blob = b.serialize()
     print(f"datalogger tables = {len(blob)} B  ({len(b.profiles)} profiles, "
@@ -291,4 +293,5 @@ if __name__ == "__main__":
     t = DataloggerTables.parse(blob)
     pay = t.encode(1, {"temp": 25.45, "hum": 60.0})
     lat, lon = dl_gps_decode(t.identity_for(1))
-    print(f"station 1 @ {lat:.4f},{lon:.4f}: {t.decode(1, pay)[1]}")
+    print(f"station 1 {t.name_for(1)!r} @ {lat:.4f},{lon:.4f}  elev {t.elevation_for(1)} m: "
+          f"{t.decode(1, pay)[1]}")

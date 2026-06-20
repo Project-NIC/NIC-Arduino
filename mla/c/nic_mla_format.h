@@ -72,14 +72,20 @@ static inline uint8_t mla_flags_kf_back(uint8_t flags)    { return (uint8_t)(fla
  *   SCHEMA table:  [0]=MLA_SCHEMA_VER  [1]=n_log  [2]=n_data  then
  *                  (n_log+n_data) × 14 B field descriptors
  *                  (width, unit, exp10, flags, offset[i16], name[8 B]).
- *   STATION table: [0]=MLA_STATION_VER [1]=n  then n × 6 raw bytes
- *                  (index 1..n → record; the 6 bytes' meaning is the glue's).
+ *   STATION table: [0]=MLA_STATION_VER [1]=n  then n × 42 B records, each
+ *                  identity(8 B, opaque to MLA — meaning is the glue's) +
+ *                  elevation(2 B, i16 LE metres, 0x8000 = unknown) +
+ *                  name(32 B, UTF-8, NUL-padded, all-zero = none — StationXML
+ *                  <Site><Name> material). This unifies the station identity on
+ *                  the datalogger's 8-byte model; the old 6-byte
+ *                  region/number/reserved record is gone.
  */
 #define MLA_SCHEMA_OFF    MLA_PFX_HDR_SIZE             /* 34 */
 #define MLA_SCHEMA_VER    1u
 #define MLA_FIELD_SIZE    14u                          /* 6 core + 8 name */
 #define MLA_STATION_VER   0x53u                        /* tag, distinct from schema ver */
-#define MLA_STATION_REC   6u
+#define MLA_STA_NAME_LEN  32u                          /* human station name, UTF-8, NUL-padded */
+#define MLA_STATION_REC   (8u + 2u + MLA_STA_NAME_LEN) /* 42 — identity(8) + elev_m(i16) + name(32) */
 
 static inline uint16_t mla_schema_size(uint8_t n_log, uint8_t n_data) {
     return (uint16_t)(3u + MLA_FIELD_SIZE * (uint16_t)(n_log + n_data));

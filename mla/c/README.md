@@ -9,6 +9,7 @@ testem: C zápis ↔ Python čtení).
 | `nic_mla_format.h` | sdílené (header-only): konstanty, CRC16, LE pomocníci, build/parse log+prefix, `mla_hal_t` | obě |
 | `nic_mla_write.{h,c}` | **WRITE-ONLY** — `format` / `mount` / `append` | ATmega328 a malá Arduina (write-only stanice) |
 | `nic_mla.{h,c}` | **KOMPLETNÍ** — + `read_record` / `foreach`+filtr / `recover` | ARM Arduino (SAMD/STM32/Teensy/ESP), PC |
+| `dl_identity.h` | datalogger: enkodéry 8B identity stanice (`dl_gps` / `dl_ident` / `dl_raw`), byte-exact s Pythonem | glue na masteru |
 
 > **Proč dvě?** ATmega jen zapisuje (à minuty/15 min) a má 2 KB RAM. Write-only
 > knihovna nemá žádnou velkou alokaci (největší buffer na zásobníku = 32 B, prefix

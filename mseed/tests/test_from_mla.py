@@ -14,7 +14,7 @@ import nic_mseed  # noqa: E402  — puts third_party (nic_mla, nic_dmd) on sys.p
 from nic_mseed import MseedExporter
 from nic_mseed.mseed import read_stream
 from nic_mla import MlaCore, MlaPosixHAL
-from mla_schema import MlaSchemaBuilder, MlaStationTable
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident
 from nic_dmd import DmdEncoder
 
 _p = _f = 0
@@ -32,8 +32,8 @@ def _schema_stations():
     sb.data("z", unit="raw", width=2, signed=True)
     sb.data("n", unit="raw", width=2, signed=True)
     st = MlaStationTable()
-    st.station(region=55, number=25000)    # index 1 — raw
-    st.station(region=55, number=25001)    # index 2 — compressed
+    st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha-Klementinum")  # index 1 — raw
+    st.station(dl_ident(region=55, number=25001), elev_m=240, name="Libuš")              # index 2 — compressed
     return sb.table(), st.table()
 
 
@@ -84,6 +84,19 @@ def main():
         check("station 1 / N raw round-trips", bychan.get(("25000", "N")) == n_raw)
         check("station 2 / Z compressed round-trips (DMD→Steim)", bychan.get(("25001", "Z")) == z_cmp)
         check("station 2 / N compressed round-trips (DMD→Steim)", bychan.get(("25001", "N")) == n_cmp)
+
+        # The 32-byte human station name is NOT in the miniSEED DATA records
+        # (those use the short SEED CODE = `number`, asserted above) but stays
+        # READABLE for a future StationXML <Site><Name> emitter.
+        from nic_mla import MlaCore as _MC, MlaPosixHAL as _HAL
+        from mla_schema import mla_read_stations as _rs
+        with _HAL(path) as _h:
+            _c = _MC(_h); _c.mount()
+            _stations = _rs(_c._prefix.to_bytes())
+        check("station name readable for StationXML (index 1)",
+              MseedExporter.station_name(_stations, 1) == "Praha-Klementinum")
+        check("station name multibyte readable (index 2, 'Libuš')",
+              MseedExporter.station_name(_stations, 2) == "Libuš")
 
     print(f"\nResult: {_p}/{_p+_f} PASS | {_f} FAIL")
     sys.exit(0 if _f == 0 else 1)

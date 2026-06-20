@@ -116,11 +116,14 @@ for rec, data in mla_query(MlaArchive("/data"), station=1, time_from=t0, time_to
 
 ```python
 from mla_schema import MlaSchemaBuilder, MlaStationTable, mla_read_schema, \
-                       mla_read_stations, mla_decode_payload, mla_split_station
+                       mla_read_stations, mla_decode_payload, mla_split_station, dl_ident
 
 sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
-st = MlaStationTable(); st.station(region=55, number=25000)   # индекс 1 → эта станция
+# Запись станции = идентичность(8B) + высота(2B) + имя(32B). Идентичность
+# собирается через dl_ident / dl_gps / dl_raw; высота — знаковые метры (None =
+# неизвестно); имя — читаемая метка (UTF-8, ≤32 B, "" = нет — StationXML <Site><Name>).
+st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")  # индекс 1 → эта станция
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -128,13 +131,13 @@ with hal:
     mla.format(schema_table=sb.table(), station_table=st.table())
     mla.append(ts, station=1, data=temp.to_bytes(2, "little", signed=True))
 
-# Любой читатель восстановит имена, единицы и реальный номер станции — без знаний:
+# Любой читатель восстановит имена, единицы, идентичность станции, высоту и имя — без знаний:
 with MlaPosixHAL("log.mla") as hal:
     mla = MlaCore(hal); mla.mount()
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        region, number, _ = mla_split_station(stations[rec.station - 1])
+        identity, vysota_m, imya = mla_split_station(stations[rec.station - 1])  # 8 непрозрачных байт + метры + имя
         cols = mla_decode_payload(fields, data)   # [(имя, единица, значение), …]
 ```
 
@@ -172,9 +175,10 @@ cc -std=c99 -Wall -Wextra -O2 nic_mla_test.c nic_mla.c nic_mla_write.c \
 
 ## Заметки для интеграторов
 
-- **Имён станций в файле нет.** Таблица STATION хранит лишь 6 сырых байт на
-  станцию; что они значат (регион / номер / город / …) решает ваш слой-клей,
-  который держит собственное отображение «6 байт → смысл». Лог несёт только
+- **Имён станций в файле нет.** Таблица STATION хранит на станцию 8-байтовую
+  непрозрачную идентичность + 2-байтовую высоту (i16 LE, метры); что идентичность
+  значит (регион / номер / GPS / …) решает ваш слой-клей, который держит
+  собственное отображение «8 байт → смысл». Лог несёт только
   1-байтовый индекс — перевод его в реальный номер станции это задача клея, а не
   контейнера.
 - **Поле `subsec` в записи лога — это два непрозрачных байта, которыми владеет

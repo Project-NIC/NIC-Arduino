@@ -32,8 +32,17 @@ blob is covered by the prefix CRC, exactly like the v1.2 schema table.
 ```
 LOG       : 0x4C  n_log         n_log × 14B descriptor      (describes the fixed 16B record)
 PROFILES  : 0x50  n_profiles    [ n_data(1B)  n_data × 14B ] × n_profiles
-STATIONS  : 0x54  n_stations    [ identity(8B)  profile_ref(1B) ] × n_stations
+STATIONS  : 0x54  n_stations    [ identity(8B)  profile_ref(1B)  elevation(2B)  name(32B) ] × n_stations
 ```
+
+`elevation` is signed metres as **i16 little-endian** (`0x8000` = unknown/unset);
+it is a SEPARATE record field placed after `profile_ref`, not part of the opaque
+identity. `name` is a SEPARATE fixed 32-byte human-readable label (UTF-8,
+NUL-padded, all-zero = none) placed last — StationXML `<Site><Name>` material;
+it is **prefix-once** metadata, NOT carried in each 16-byte log record. The
+8-byte identity here is the SAME station-identity model the single-schema format
+now uses — this **unifies** the station identity on the 8-byte model (the old
+6-byte region/number/reserved record is retired).
 
 The 14-byte field descriptor and `physical = (raw + offset) × 10^exp10` are the
 **same** as v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).
@@ -46,6 +55,13 @@ MLA gives the 8 bytes no meaning; the glue does. Builder encoders:
 - `dl_gps(lat, lon)` — 2× i32 (degrees ×10⁷, ~1 cm)
 - `dl_ident(number, region, kind, reserved)` — hierarchical (4× u16)
 - `dl_raw(8 bytes)` — anything
+
+**Fixed station → `dl_gps`, surveyed once at install.** The location *is* the identity
+— no separate position field, no station-number scheme to outgrow, globally unique to
+~1 cm and ready for spatial indexing. The same 8-byte identity serves every front
+(seismo, weather, iono, …); freeze the coordinate so it does not drift with each fix.
+`dl_ident` / `dl_raw` stay for hierarchical or custom IDs.
+
 > Four electricity meters in one box → 4 stations with the **same GPS, different
 > `number`, same profile_ref** (the layout is stored once).
 

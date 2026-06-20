@@ -22,7 +22,7 @@ _MLA = os.path.join(os.path.dirname(__file__), "..", "third_party", "nic_mla")
 sys.path.insert(0, _MLA)
 sys.path.insert(0, os.path.join(_MLA, "tools"))
 from nic_mla import MlaCore, MlaPosixHAL  # noqa: E402
-from mla_schema import MlaSchemaBuilder, MlaStationTable  # noqa: E402
+from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident  # noqa: E402
 
 # DATA schema — one entry per sensor value, packed in this order.
 # (name, unit, width, exp10, signed, base, swing)  — base/swing are sim params.
@@ -32,8 +32,12 @@ SENSORS = [
     ("pressure", "hPa",  2, -1, False, 1013.0, 12.0),
     ("wind",     "m_s",  2, -1, False,    4.0,  3.0),
 ]
-# Three LoRa nodes — index 1..3 → (region, number). Filled by the host glue.
-STATIONS = [(55, 25000), (55, 25001), (55, 25777)]
+# Three LoRa nodes — index 1..3 → (region, number, elevation_m, name). The
+# 8-byte identity is dl_ident(region, number); elevation is a separate signed
+# field; name is a human label (UTF-8, ≤32 B — StationXML <Site><Name> material).
+STATIONS = [(55, 25000, 235, "Praha-Klementinum"),
+            (55, 25001, 240, "Praha-Karlov"),
+            (55, 25777, 198, "Praha-Libuš")]
 
 T0 = 1_748_000_000  # base unix time (~2025)
 STEP = 900  # 15 min between samples
@@ -50,8 +54,8 @@ def build_schema() -> bytes:
 
 def build_stations() -> bytes:
     st = MlaStationTable()
-    for region, number in STATIONS:
-        st.station(region=region, number=number)
+    for region, number, elev_m, name in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m, name=name)
     return st.table()
 
 

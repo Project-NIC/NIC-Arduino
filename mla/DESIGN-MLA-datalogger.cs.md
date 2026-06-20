@@ -32,8 +32,17 @@ je krytý CRC prefixu, přesně jako v1.2 schema tabulka.
 ```
 LOG       : 0x4C  n_log         n_log × 14B descriptor      (popisuje pevný 16B paket)
 PROFILY   : 0x50  n_profilů     [ n_data(1B)  n_data × 14B ] × n_profilů
-STANICE   : 0x54  n_stanic      [ identita(8B)  odkaz(1B) ] × n_stanic
+STANICE   : 0x54  n_stanic      [ identita(8B)  odkaz(1B)  nadm. výška(2B)  název(32B) ] × n_stanic
 ```
+
+`nadmořská výška` je znaménkové metry jako **i16 little-endian** (`0x8000` =
+neznámá/nenastavená); je to SAMOSTATNÉ pole záznamu za `odkaz`em, není součástí
+neprůhledné identity. `název` je SAMOSTATNÉ pevné 32bajtové čitelné pole (UTF-8,
+doplněné NUL, samé nuly = žádný) na konci — materiál pro StationXML
+`<Site><Name>`; je to metadata zapsaná **jednou v prefixu**, NE v každém
+16bajtovém log záznamu. 8bajtová identita je TENTÝŽ model identity stanice, který
+teď používá i jednoschématový formát — tím se identita stanice **sjednocuje** na
+8bajtovém modelu (starý 6bajtový záznam region/number/reserved je zrušen).
 
 14bajtový descriptor pole a `fyzikální = (raw + offset) × 10^exp10` jsou **stejné**
 jako ve v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).
@@ -46,6 +55,13 @@ MLA jí nepřiřazuje význam; dělá to glue. Enkodéry v builderu:
 - `dl_gps(lat, lon)` — 2× i32 (stupně ×10⁷, ~1 cm)
 - `dl_ident(number, region, kind, reserved)` — hierarchická (4× u16)
 - `dl_raw(8 bajtů)` — cokoliv
+
+**Pevná stanice → `dl_gps`, jednou zaměřená při instalaci.** Poloha *je* identita —
+žádné zvláštní pole polohy, žádné číslování stanic, které dojde; globálně jednoznačné
+na ~1 cm a připravené na prostorové indexování. Stejná 8bajtová identita slouží každému
+frontu (seismo, weather, iono, …); souřadnici při instalaci zafixuj, ať nelítá s každým
+fixem. `dl_ident` / `dl_raw` zůstávají pro hierarchická nebo vlastní ID.
+
 > Čtyři elektroměry v jedné krabici → 4 stanice se **stejnou GPS, různým `number`,
 > stejným odkazem na profil** (layout uložený jednou).
 

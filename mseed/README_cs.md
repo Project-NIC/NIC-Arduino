@@ -56,6 +56,7 @@ python3 examples/mla_to_mseed.py            # postaví vzorový .mla, převede, 
 python3 tests/test_steim.py                 # round-trip Steim-1/2 kodeku
 python3 tests/test_mseed.py                 # miniSEED zapisovač (+ ObsPy zlatý standard, je-li nainstalován)
 python3 tests/test_from_mla.py              # end-to-end MLA(+DMD) → miniSEED round-trip
+python3 tests/test_to_stationxml.py         # metadata StationXML (+ kontrola schématu ObsPy, je-li nainstalován)
 ```
 
 ## Jak se MLA mapuje na miniSEED
@@ -72,6 +73,45 @@ Každá dvojice `(stanice, pole)` se stane jedním miniSEED kanálem. Konvertor
 předpokládá rovnoměrně vzorkovanou, souvislou řadu na kanál (platí pro synchronizovaný
 sběr, např. **NIC-Quake**); dělení na mezery (gaps) řeší až pozdější průchod.
 
+## Metadatový sidecar StationXML
+
+miniSEED nese *data*; FDSN nástroje potřebují i *metadata* — identitu stanice,
+souřadnice, vzorkovací frekvenci a citlivost count→fyzikální hodnota. To je
+**StationXML** a `nic_mseed/to_stationxml.py` jej emituje (FDSN StationXML 1.1):
+
+```python
+from nic_mseed import StationXmlExporter
+
+StationXmlExporter(
+    sample_rate_hz=100.0,        # MUSÍ se shodovat s frekvencí použitou pro export miniSEED
+    network="NQ",                # stejné argumenty konstruktoru jako MseedExporter
+).export("quake.mla", "quake.xml")
+```
+
+**Páruje se s miniSEED**: kódy Network/Station/Location/Channel (NSLC) i vzorkovací
+frekvence se berou ze *stejného* `MseedExporter`, který používá `from_mla.py`, takže
+ObsPy / SeisComp přiřadí metadata k datům už z principu. Zbytek dodá MLA prefix:
+GPS identita (`dl_gps`) → Latitude/Longitude, pole i16 → Elevation, 32bajtový název →
+`<Site><Name>` a `exp10` každého DATA pole → `<InstrumentSensitivity>` (celková
+citlivost = counts na fyzikální jednotku = `10**-exp10`) s jednotkou pole
+(`m_s`→`m/s`, `degC`, `Pa`, …) jako vstup a `count` jako výstup.
+
+Dvě poctivá omezení (uvedená i v modulu a v XML):
+
+- **Plochá odezva.** Každý kanál nese jen `<InstrumentSensitivity>` (skalární DC
+  zisk) — žádné póly/nuly ani kaskádu stupňů, protože MLA frekvenční odezvu nenese.
+  Přesné pro ploché meteo senzory; aproximace prvního řádu pro MEMS seismo kanály.
+  **Nestačí** pro skutečnou dekonvoluci přístroje.
+- **Souřadnice vyžadují GPS identitu.** Latitude/Longitude pocházejí z `dl_gps`
+  identity. Hierarchická `dl_ident` identita souřadnice nenese — předej override
+  `coords={index: (lat, lon)}`, jinak emitor vyhodí chybu (nikdy tiše nezapíše 0,0).
+  Neznámá nadmořská výška (sentinel 0x8000) se zapíše jako zástupná `0`.
+
+```bash
+python3 -m nic_mseed.to_stationxml quake.mla quake.xml --rate 100 --network NQ
+python3 tests/test_to_stationxml.py         # emitor + párování (+ kontrola schématu ObsPy, je-li nainstalován)
+```
+
 ## Validace
 
 Kodek i zapisovač projdou round-tripem přes vlastní minimální čtečku tohoto balíku.
@@ -81,10 +121,10 @@ miniSEED test navíc validuje proti **ObsPy**, je-li nainstalován — spusť
 ## Rozložení
 
 ```
-nic_mseed/          Python: steim (kodek) + mseed (zapisovač) + from_mla (konvertor)
+nic_mseed/          Python: steim (kodek) + mseed (zapisovač) + from_mla (konvertor) + to_stationxml (metadata)
 c/                  C: přenositelný Steim-1/2 kodek + miniSEED zapisovač (+ testy, CMake)
 examples/           spustitelné demo MLA → miniSEED
-tests/              round-trip kodeku, zapisovač a end-to-end testy konvertoru
+tests/              round-trip kodeku, zapisovač, end-to-end konvertor a testy StationXML
 third_party/        vendorované NIC-MLA + NIC-DMD (viz VENDORED.md)
 ```
 

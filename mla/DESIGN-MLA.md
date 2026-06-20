@@ -155,6 +155,13 @@ is **one 512 B sector**; if the tables don't fit it grows in whole 512 B sectors
 [end-2] mla_crc16         2 B   LE  — over everything before it
 ```
 
+> **Proposed v1.2 (uplink backfill).** The reserved 8 B at **[12]** are earmarked for
+> `first_ts` (4 B, Unix seconds of the file's first LOG record) + `last_ts` (4 B, stamped on
+> rotation/close; 0 while the file is live). This lets a store-and-forward uplink narrow a
+> catch-up to the right rotation file from the **header alone**, without opening each file's
+> LOG. Non-breaking: v1.1 writes [12] = 0 and readers fall back to probing each file's first
+> LOG record. See NIC-Station `SESSION_HANDOFF.md` §11 / core `DESIGN.md` D30.
+
 ### 3.1 SCHEMA table — field names/units for CSV/SQL
 
 Built/read by `tools/mla_schema.py`. Lets any reader export records to CSV/SQL
@@ -179,13 +186,21 @@ in the file.
 ```
 [0] sta_ver  1 B  = 0x53
 [1] n        1 B  number of stations (1..255)
-[2 ..]       n × 6 raw bytes (index i in the log → record i-1)
+[2 ..]       n × 42 B records (index i in the log → record i-1), each:
+                identity(8 B)  + elevation(2 B, i16 LE, metres, 0x8000 = unknown)
+                + name(32 B, UTF-8, NUL-padded, all-zero = none)
 ```
 
-The 6 bytes are **opaque to MLA**. A common split is `region(2) + number(2) +
-reserved(2)`, but the host glue decides; it can also be `city/number/region` or
-one big number. People assign station numbers with gaps — the glue maps them to
-compact 1-byte indices and back.
+The 8-byte **identity is opaque to MLA** — build it with the same encoders the
+datalogger format uses (`dl_gps` = 2× i32 deg×1e7, `dl_ident` = region/number/
+kind/reserved as 4× u16, or `dl_raw` = 8 bytes verbatim). This **unifies** the
+station identity on the 8-byte model; the old 6-byte region/number/reserved
+record is **retired**. `elevation` is a separate signed-metres field (i16 LE,
+`0x8000` = unknown), distinct from the opaque identity. `name` is a separate
+fixed 32-byte human-readable label (UTF-8, NUL-padded, all-zero = none) —
+StationXML `<Site><Name>` material; it is **prefix-once** metadata, NOT carried
+in each 16-byte log record. People assign station numbers with gaps — the glue
+maps them to compact 1-byte indices and back.
 
 > **Dumb container.** Both tables are written verbatim from above and never
 > interpreted by the C/MCU path. Compression, encryption, station-number
@@ -372,6 +387,11 @@ MLA is a dumb container; the following are deliberately **not** its job:
   the glue's choice.
 - **File rotation** across many files — platform glue over the filesystem
   (`MlaArchive` in Python); each file is independently mountable via `file_seq`.
+  The glue may also **name each file by its `first_ts`** (e.g. a `YYYYMMDD` date stamp) so the
+  directory listing is a self-evident time index for store-and-forward catch-up. This is a
+  *naming policy only* — `file_seq` and the header (incl. the proposed v1.2 `first_ts`) stay
+  authoritative, since the clock can be unset at create time (pre-GPS cold boot) and FAT 8.3
+  limits short names (fall back to the `file_seq` name, optionally rename once time is known).
 
 This separation keeps MLA small enough for an ATmega (write-only, 16 B log, one
 512 B prefix sector) while letting a capable host build an arbitrarily smart
