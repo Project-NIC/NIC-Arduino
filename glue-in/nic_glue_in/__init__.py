@@ -40,7 +40,10 @@ from nic_mla import (  # noqa: E402
     MLA_FLAG_COMPRESSED, MLA_KF_MASK,
     MLA_CRC_NONE, MLA_CRC_DATA, MLA_CRC_FULL,
 )
-from mla_schema import MlaSchemaBuilder, MlaStationTable  # noqa: E402
+from mla_schema import (  # noqa: E402
+    MlaSchemaBuilder, MlaStationTable,
+    dl_gps, dl_gps_decode, dl_ident, dl_raw, dl_elev, dl_elev_decode,
+)
 
 from .logger import (  # noqa: E402
     GlueLogger, GlueArchiveLogger, CompressedChannel, ChannelBank,
@@ -55,6 +58,7 @@ __all__ = [
     "ChannelBank",
     "MlaSchemaBuilder",
     "MlaStationTable",
+    "dl_gps", "dl_gps_decode", "dl_ident", "dl_raw", "dl_elev", "dl_elev_decode",
     "DMD_KEYFRAME_EVERY",
     "MLA_FLAG_COMPRESSED", "MLA_KF_MASK",
     "MLA_CRC_NONE", "MLA_CRC_DATA", "MLA_CRC_FULL",

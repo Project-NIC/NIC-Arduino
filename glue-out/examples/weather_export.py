@@ -39,21 +39,23 @@ SENSORS = [
     ("wind",     "m_s",  2, -1, False,    4.0,  3.0),
 ]
 ROW_WIDTH = sum(w for _n, _u, w, *_ in SENSORS)        # 8 B
-STATIONS = [(55, 25000), (55, 25001), (55, 25777)]      # index 1..3
+STATIONS = [(55, 25000, 235, "Praha-Klementinum"),                 # index 1..3
+            (55, 25001, 240, "Praha-Karlov"),                      # (region, number,
+            (55, 25777, 198, "Praha-Libuš")]                       #  elev_m, name)
 T0, STEP, N_ROUNDS = 1_748_000_000, 900, 20
 
 
 def build_sample(path: str) -> None:
     from nic_mla import MlaCore, MlaPosixHAL
-    from mla_schema import MlaSchemaBuilder, MlaStationTable
+    from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident
 
     sb = MlaSchemaBuilder()
     sb.log("datetime")
     for name, unit, width, exp10, signed, _b, _s in SENSORS:
         sb.data(name, unit=unit, width=width, exp10=exp10, signed=signed)
     st = MlaStationTable()
-    for region, number in STATIONS:
-        st.station(region=region, number=number)
+    for region, number, elev_m, sta_name in STATIONS:
+        st.station(dl_ident(region=region, number=number), elev_m=elev_m, name=sta_name)
 
     def pack(idx: int, t: int) -> bytes:
         out = b""

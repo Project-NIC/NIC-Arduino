@@ -38,6 +38,7 @@ from mla_schema import (
     MlaSchemaBuilder, MlaStationTable, MlaField,
     mla_read_schema, mla_read_stations, mla_decode_value, mla_decode_payload, mla_split_station,
     mla_encode_value, mla_encode_payload,
+    dl_gps, dl_gps_decode, dl_ident, dl_elev, dl_elev_decode, MLA_STATION_REC,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -325,8 +326,8 @@ def test_rotation_inherits_tables():
     from mla_schema import MlaStationTable
     tmp = tempfile.mkdtemp(prefix="nic_mla_arch_")
     try:
-        stab = (MlaStationTable().station(region=7, number=42)
-                                 .station(region=7, number=43).table())
+        stab = (MlaStationTable().station(dl_ident(region=7, number=42), elev_m=120)
+                                 .station(dl_ident(region=7, number=43)).table())
         # First session: create with a station table, write a little.
         with MlaArchive(tmp, file_size=2048, station_table=stab) as arch:
             for i in range(3):
@@ -517,26 +518,47 @@ def test_schema_encode():
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_station_table():
-    section("Station table — index → station number")
+    section("Station table — index → identity(8B) + elevation(2B) + name(32B)")
     st = MlaStationTable()
-    st.station(region=55, number=25000)    # index 1
-    st.station(region=55, number=25001)    # index 2
-    st.station(region=55, number=25777)    # index 3 (gap is fine)
+    st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")     # index 1
+    st.station(dl_gps(50.0875, 14.4213), elev_m=-12, name="Libuš")             # index 2 (GPS, diacritic)
+    st.station(dl_ident(region=55, number=25777))                               # index 3 (elev/name unset)
     stab = st.table()
+
+    check("record is 42 B (identity 8 + elev 2 + name 32)", MLA_STATION_REC == 42)
+    check("station table length matches", len(stab) == 2 + 3 * 42)
 
     prefix = MlaPrefix(file_size=_SZ, station_table=stab).to_bytes()
     check("prefix 512 B with stations", len(prefix) == 512)
 
     recs = mla_read_stations(prefix)
     check("mla_read_stations count", recs is not None and len(recs) == 3)
-    check("split index 1 → 55/25000", mla_split_station(recs[0])[:2] == (55, 25000))
-    check("split index 3 → 55/25777", mla_split_station(recs[2])[:2] == (55, 25777))
+    id1, elev1, name1 = mla_split_station(recs[0])
+    check("split index 1 identity → dl_ident(55, 25000)",
+          id1 == dl_ident(region=55, number=25000))
+    check("split index 1 elevation → 235 m", elev1 == 235)
+    check("split index 1 name → 'Praha'", name1 == "Praha")
+    id2, elev2, name2 = mla_split_station(recs[1])
+    check("split index 2 GPS identity round-trips",
+          all(abs(a - b) < 1e-6 for a, b in zip(dl_gps_decode(id2), (50.0875, 14.4213)))
+          and elev2 == -12)
+    check("split index 2 multibyte name round-trips (Libuš)", name2 == "Libuš")
+    id3, elev3, name3 = mla_split_station(recs[2])
+    check("split index 3 elevation unknown → None", elev3 is None)
+    check("split index 3 name empty → ''", name3 == "")
+
+    # Name length discipline: >32 UTF-8 bytes must raise (mirrors MlaField.name)
+    try:
+        MlaStationTable().station(dl_ident(region=1, number=1), name="x" * 33)
+        check("name > 32 B raises", False)
+    except ValueError:
+        check("name > 32 B raises", True)
 
     # No station table → None
     plain = MlaPrefix(file_size=_SZ).to_bytes()
     check("no stations → None", mla_read_stations(plain) is None)
 
-    # End-to-end: write with both tables, mount, translate index → number
+    # End-to-end: write with both tables, mount, translate index → identity/elev/name
     schema = _example_schema().table()
     hal = MlaPosixHAL.create(_TMP, _SZ)
     with hal:
@@ -545,13 +567,20 @@ def test_station_table():
         pay = ((250).to_bytes(2, "little", signed=True)
                + (550).to_bytes(2, "little") + (1).to_bytes(4, "little"))
         m.append(1700000000, station=3, data=pay)
+        m.append(1700000001, station=1, data=pay)
     with MlaPosixHAL(_TMP) as hal:
         m2 = MlaCore(hal); m2.mount()
         pfx = m2._prefix.to_bytes()
         stations = mla_read_stations(pfx)
-        rec, _ = list(m2)[0]
-        region, number, _ = mla_split_station(stations[rec.station - 1])
-        check("log index → real station", (region, number) == (55, 25777))
+        recs2 = list(m2)
+        rec0, _ = recs2[0]
+        identity, elevation, name = mla_split_station(stations[rec0.station - 1])
+        check("log index → real station identity",
+              identity == dl_ident(region=55, number=25777)
+              and elevation is None and name == "")
+        rec1, _ = recs2[1]
+        check("log index → named station",
+              mla_split_station(stations[rec1.station - 1])[2] == "Praha")
         check("both tables coexist in prefix",
               mla_read_schema(pfx)[1] is not None and stations is not None)
 
@@ -569,7 +598,7 @@ def test_extended_prefix():
     schema = sb.table()
     st = MlaStationTable()
     for i in range(40):
-        st.station(region=10, number=1000 + i)
+        st.station(dl_ident(region=10, number=1000 + i), elev_m=i)
     stab = st.table()
 
     prefix = MlaPrefix(file_size=_SZ, schema_table=schema, station_table=stab)
@@ -602,7 +631,7 @@ def test_extended_prefix():
         for i in range(255):
             huge.data(f"d{i:03d}", unit="raw", width=1)
         MlaPrefix(file_size=_SZ, schema_table=huge.table(),
-                  station_table=MlaStationTable().station(1, 1).table())
+                  station_table=MlaStationTable().station(dl_ident(number=1)).table())
         # 255 × 14 ≈ 3.6 KB → 8 sectors, fine; force the ceiling explicitly:
         prefix_byte_len_check = MLA_MAX_PREFIX_SEC * 512 + 1
         from nic_mla import _prefix_byte_len

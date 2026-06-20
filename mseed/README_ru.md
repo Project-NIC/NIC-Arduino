@@ -57,6 +57,7 @@ python3 examples/mla_to_mseed.py            # строит образец .mla, 
 python3 tests/test_steim.py                 # round-trip кодека Steim-1/2
 python3 tests/test_mseed.py                 # запись miniSEED (+ эталон ObsPy, если установлен)
 python3 tests/test_from_mla.py              # end-to-end MLA(+DMD) → miniSEED round-trip
+python3 tests/test_to_stationxml.py         # метаданные StationXML (+ проверка схемы ObsPy, если установлен)
 ```
 
 ## Как MLA отображается в miniSEED
@@ -74,6 +75,49 @@ python3 tests/test_from_mla.py              # end-to-end MLA(+DMD) → miniSEED 
 синхронизированного сбора, напр. **NIC-Quake**); разбиение на пропуски (gaps)
 оставлено на более поздний проход.
 
+## Метаданные-сайдкар StationXML
+
+miniSEED несёт *данные*; инструментам FDSN нужны и *метаданные* — идентичность
+станции, координаты, частота дискретизации и чувствительность count→физическая
+величина. Это **StationXML**, и `nic_mseed/to_stationxml.py` его эмитит (FDSN
+StationXML 1.1):
+
+```python
+from nic_mseed import StationXmlExporter
+
+StationXmlExporter(
+    sample_rate_hz=100.0,        # ДОЛЖНА совпадать с частотой, использованной для экспорта miniSEED
+    network="NQ",                # те же аргументы конструктора, что и у MseedExporter
+).export("quake.mla", "quake.xml")
+```
+
+**Спаривается с miniSEED**: коды Network/Station/Location/Channel (NSLC) и частота
+дискретизации берутся из *того же* `MseedExporter`, что использует `from_mla.py`,
+поэтому ObsPy / SeisComp привязывают метаданные к данным по построению. Остальное
+даёт префикс MLA: GPS-идентичность (`dl_gps`) → Latitude/Longitude, поле i16 →
+Elevation, 32-байтовое имя → `<Site><Name>`, а `exp10` каждого DATA-поля →
+`<InstrumentSensitivity>` (общая чувствительность = counts на физическую единицу =
+`10**-exp10`) с единицей поля (`m_s`→`m/s`, `degC`, `Pa`, …) на входе и `count`
+на выходе.
+
+Два честных ограничения (указаны и в модуле, и в XML):
+
+- **Плоский отклик.** Каждый канал несёт только `<InstrumentSensitivity>`
+  (скалярный коэффициент на DC) — без полюсов/нулей и каскада стадий, потому что
+  MLA не несёт частотный отклик. Точно для плоских метео-датчиков; приближение
+  первого порядка для MEMS сейсмо-каналов. **Недостаточно** для настоящей
+  деконволюции прибора.
+- **Координаты требуют GPS-идентичность.** Latitude/Longitude берутся из
+  `dl_gps`-идентичности. Иерархическая `dl_ident`-идентичность координат не несёт —
+  передай override `coords={индекс: (lat, lon)}`, иначе эмиттер бросит ошибку
+  (он никогда не пишет 0,0 молча). Неизвестная высота (сентинел 0x8000) пишется
+  как заглушка `0`.
+
+```bash
+python3 -m nic_mseed.to_stationxml quake.mla quake.xml --rate 100 --network NQ
+python3 tests/test_to_stationxml.py         # эмиттер + спаривание (+ проверка схемы ObsPy, если установлен)
+```
+
 ## Валидация
 
 Кодек и писатель проходят round-trip через собственный минимальный ридер этого
@@ -84,10 +128,10 @@ python3 tests/test_from_mla.py              # end-to-end MLA(+DMD) → miniSEED 
 ## Структура
 
 ```
-nic_mseed/          Python: steim (кодек) + mseed (писатель) + from_mla (конвертер)
+nic_mseed/          Python: steim (кодек) + mseed (писатель) + from_mla (конвертер) + to_stationxml (метаданные)
 c/                  C: переносимый кодек Steim-1/2 + писатель miniSEED (+ тесты, CMake)
 examples/           запускаемое демо MLA → miniSEED
-tests/              round-trip кодека, писатель и end-to-end тесты конвертера
+tests/              round-trip кодека, писатель, end-to-end конвертер и тесты StationXML
 third_party/        вендоренные NIC-MLA + NIC-DMD (см. VENDORED.md)
 ```
 

@@ -109,11 +109,14 @@ Sebepopisný soubor (tabulky schema + stanice → export do CSV/SQL):
 
 ```python
 from mla_schema import MlaSchemaBuilder, MlaStationTable, mla_read_schema, \
-                       mla_read_stations, mla_decode_payload, mla_split_station
+                       mla_read_stations, mla_decode_payload, mla_split_station, dl_ident
 
 sb = MlaSchemaBuilder()
 sb.data("temp", unit="degC", width=2, exp10=-1, signed=True)
-st = MlaStationTable(); st.station(region=55, number=25000)   # index 1 → tato stanice
+# Záznam stanice = identita(8B) + nadm. výška(2B) + název(32B). Identitu sestav
+# přes dl_ident / dl_gps / dl_raw; výška jsou znaménkové metry (None = neznámá);
+# název je čitelný popisek (UTF-8, ≤32 B, "" = žádný — StationXML <Site><Name>).
+st = MlaStationTable(); st.station(dl_ident(region=55, number=25000), elev_m=235, name="Praha")  # index 1 → tato stanice
 
 hal = MlaPosixHAL.create("log.mla")
 with hal:
@@ -121,13 +124,13 @@ with hal:
     mla.format(schema_table=sb.table(), station_table=st.table())
     mla.append(ts, station=1, data=teplota.to_bytes(2, "little", signed=True))
 
-# Libovolná čtečka obnoví názvy, jednotky i skutečné číslo stanice — bez znalosti:
+# Libovolná čtečka obnoví názvy, jednotky, identitu stanice i výšku — bez znalosti:
 with MlaPosixHAL("log.mla") as hal:
     mla = MlaCore(hal); mla.mount()
     pfx = mla._prefix.to_bytes()
     _, fields = mla_read_schema(pfx); stations = mla_read_stations(pfx)
     for rec, data in mla:
-        region, number, _ = mla_split_station(stations[rec.station - 1])
+        identity, vyska_m, nazev = mla_split_station(stations[rec.station - 1])  # 8 neprůhledných bajtů + metry + název
         cols = mla_decode_payload(fields, data)   # [(název, jednotka, hodnota), …]
 ```
 
@@ -165,10 +168,11 @@ Viz **[`c/README.md`](c/README.md)**.
 
 ## Poznámky pro integrátory
 
-- **Názvy stanic nejsou v souboru.** Tabulka STATION nese jen 6 syrových bajtů
-  na stanici; co znamenají (region / číslo / město / …) určuje tvoje glue (lepidlo)
-  vrstva, která si drží vlastní mapování „6 bajtů → význam". Log nese jen 1bajtový
-  index — překlad na skutečné číslo stanice je práce glue, ne kontejneru.
+- **Názvy stanic nejsou v souboru.** Tabulka STATION nese na stanici 8bajtovou
+  neprůhlednou identitu + 2bajtovou nadmořskou výšku (i16 LE, metry); co identita
+  znamená (region / číslo / GPS / …) určuje tvoje glue (lepidlo) vrstva, která si
+  drží vlastní mapování „8 bajtů → význam". Log nese jen 1bajtový index — překlad
+  na skutečné číslo stanice je práce glue, ne kontejneru.
 - **Pole `subsec` v log záznamu jsou dva neprůhledné bajty, které vlastní glue.**
   MLA jim nedává žádný význam a nikdy do nich nesahá. Jméno se schválně čte oběma
   způsoby: sub-**sec**ond (podsekundový) čas *i* sub-**sec**tion (např. index

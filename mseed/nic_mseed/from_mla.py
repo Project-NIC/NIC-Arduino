@@ -21,6 +21,8 @@ pass — this is a worked converter, not a framework.
 """
 from __future__ import annotations
 
+import struct
+
 from nic_mla import MlaCore, MlaPosixHAL
 from mla_schema import mla_read_schema, mla_read_stations, mla_split_station
 from nic_dmd import DmdDecoder
@@ -92,9 +94,26 @@ class MseedExporter:
             return self.network, str(v), self.location
         sta = str(idx)
         if stations and 1 <= idx <= len(stations):
-            region, number, _ = mla_split_station(stations[idx - 1])
+            # The station record is identity(8B, opaque) + elevation(2B) +
+            # name(32B). The SEED station CODE comes from the identity's `number`
+            # (hierarchical dl_ident form region/number/kind/reserved); the 32-byte
+            # human name is metadata for a future StationXML <Site><Name> emitter
+            # and is NOT put into miniSEED DATA records (read it via station_name).
+            identity, _elev, _name = mla_split_station(stations[idx - 1])
+            _region, number, _kind, _reserved = struct.unpack("<HHHH", identity)
             sta = str(number)
         return self.network, sta[:5], self.location
+
+    @staticmethod
+    def station_name(stations, idx: int) -> str:
+        """Human-readable station name for a 1-based index ("" if absent/unset).
+
+        Exposed so a future StationXML emitter can use the MLA <Site><Name>
+        material; the miniSEED DATA records still use the short SEED CODE.
+        """
+        if not stations or not (1 <= idx <= len(stations)):
+            return ""
+        return mla_split_station(stations[idx - 1])[2]
 
     def _channel_code(self, field, idx: int) -> str:
         return self.channel_map.get(field.name) or _default_channel(field.name, idx)

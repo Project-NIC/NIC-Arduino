@@ -74,7 +74,94 @@ MLA_DATA_MAX    = 65535                   # max data payload per record (v1.1 lo
                                           # packet width is u8) — that limit lives in NIC-DMD,
                                           # not here; a RAW schema may use the full u16.
 MLA_STATION_VER = 0x53                    # station table tag (distinct from schema ver)
-MLA_STATION_REC = 6                       # raw bytes per station (meaning = host glue's)
+MLA_STA_NAME_LEN = 32                     # bytes for the human station name, UTF-8, NUL-padded
+MLA_STATION_REC = 8 + 2 + MLA_STA_NAME_LEN  # 42 — identity(8) + elev_m(i16) + name(32)
+
+# ── Station identity (the 8 opaque bytes) + elevation ───────────────────────
+#  ONE definition of the station identity, shared by BOTH station tables (the
+#  single-schema MlaStationTable below and the datalogger STATIONS section in
+#  tools/mla_datalogger.py, which re-exports these). The 8 bytes are OPAQUE to
+#  MLA — the glue assigns the meaning via one of the encoders below.
+DL_IDENT_LEN     = 8                       # opaque station identity, 4-byte aligned
+MLA_ELEV_LEN     = 2                       # elevation field: i16 little-endian, metres
+MLA_ELEV_UNKNOWN = 0x8000                  # i16 sentinel (INT16_MIN) = unknown/unset
+
+
+def dl_gps(lat_deg: float, lon_deg: float) -> bytes:
+    """Latitude + longitude as 2× i32 (degrees × 1e7, ~1 cm). 8 B."""
+    lat = round(lat_deg * 1e7)
+    lon = round(lon_deg * 1e7)
+    if not (-(1 << 31) <= lat < (1 << 31) and -(1 << 31) <= lon < (1 << 31)):
+        raise ValueError("gps out of i32 range")
+    return struct.pack("<ii", lat, lon)
+
+
+def dl_gps_decode(ident: bytes) -> tuple[float, float]:
+    lat, lon = struct.unpack("<ii", ident)
+    return lat / 1e7, lon / 1e7
+
+
+def dl_ident(number: int = 0, region: int = 0, kind: int = 0,
+             reserved: int = 0) -> bytes:
+    """Hierarchical identity: region(2) + number(2) + kind(2) + reserved(2). 8 B.
+
+    The reserved u16 pads this form to the uniform 8-byte identity (matching the
+    GPS lat+lon and the raw form), so the station record stays fixed-size; it is
+    held for a future hierarchical-identity extension, not spare padding to reuse.
+    """
+    for nm, v in (("region", region), ("number", number),
+                  ("kind", kind), ("reserved", reserved)):
+        if not 0 <= v <= 0xFFFF:
+            raise ValueError(f"{nm} out of u16 range: {v}")
+    return struct.pack("<HHHH", region, number, kind, reserved)
+
+
+def dl_raw(eight: bytes) -> bytes:
+    if len(eight) != DL_IDENT_LEN:
+        raise ValueError(f"identity must be {DL_IDENT_LEN} B, got {len(eight)}")
+    return bytes(eight)
+
+
+def dl_elev(metres: int | None) -> bytes:
+    """Encode an elevation as i16 little-endian metres (2 B).
+
+    ``None`` → the 0x8000 (INT16_MIN) sentinel = unknown/unset. Otherwise the
+    value must be in [-32767, 32767] m (1 m resolution); Earth's range is
+    −11 km … +9 km, leaving a huge margin.
+    """
+    if metres is None:
+        return struct.pack("<h", -0x8000)              # 0x00 0x80 — the sentinel
+    if not -32767 <= metres <= 32767:
+        raise ValueError(f"elevation {metres} m out of i16 range [-32767, 32767]")
+    return struct.pack("<h", metres)
+
+
+def dl_elev_decode(two: bytes) -> int | None:
+    """Inverse of dl_elev: i16 LE metres, or ``None`` for the 0x8000 sentinel."""
+    if len(two) != MLA_ELEV_LEN:
+        raise ValueError(f"elevation must be {MLA_ELEV_LEN} B, got {len(two)}")
+    v = struct.unpack("<h", two)[0]
+    return None if v == -0x8000 else v
+
+
+# ── Station name (human-readable, StationXML <Site><Name> material) ──────────
+#  A SEPARATE trailing station-record field: fixed MLA_STA_NAME_LEN (32) bytes,
+#  UTF-8, NUL-padded; all-zero = no name. Same encode discipline as a field name
+#  (MlaField.name_bytes): raise if the UTF-8 bytes exceed the field; decode
+#  strips at the first NUL. It is prefix-once metadata — the 16-byte log record
+#  is unchanged (still a 1-byte station index).
+
+def _sta_name_bytes(name: str) -> bytes:
+    """The station name as exactly MLA_STA_NAME_LEN bytes (UTF-8, NUL-padded)."""
+    enc = (name or "").encode("utf-8")
+    if len(enc) > MLA_STA_NAME_LEN:
+        raise ValueError(f"{name!r}: station name is {len(enc)} B, max {MLA_STA_NAME_LEN}")
+    return enc + b"\x00" * (MLA_STA_NAME_LEN - len(enc))
+
+
+def _sta_name_decode(b: bytes) -> str:
+    """Inverse of _sta_name_bytes: UTF-8 up to the first NUL ("" if all-zero)."""
+    return bytes(b).split(b"\x00", 1)[0].decode("utf-8", "replace")
 
 
 def mla_prefix_byte_len(schema_len: int, station_len: int = 0) -> int:
@@ -315,42 +402,57 @@ def mla_encode_payload(data_fields: list[MlaField],
     return b"".join(mla_encode_value(f, v) for f, v in zip(data_fields, seq))
 
 
-# ── Station table (dumb: index → 6 raw bytes) ───────────────────────────────
-#  The log carries a 1-byte station INDEX (1..255, 0 = none). The real numbers
-#  live here, one 6 B record per station. MLA never interprets those 6 bytes —
-#  how they split (region/city/number/…) is entirely the host glue's business.
+# ── Station table (index → identity(8 B) + elevation(2 B) + name(32 B)) ─────
+#  The log carries a 1-byte station INDEX (1..255, 0 = none). The real station
+#  lives here, one 42 B record per station: an 8-byte OPAQUE identity (its
+#  meaning is the glue's — see dl_gps / dl_ident / dl_raw above), a 2-byte
+#  signed elevation in metres (i16 LE, 0x8000 = unknown), then a 32-byte
+#  human-readable name (UTF-8, NUL-padded, all-zero = none — StationXML
+#  <Site><Name> material). Elevation and name are SEPARATE fields, distinct
+#  from the opaque identity, so MLA still never has to interpret the 8 identity
+#  bytes.
+#
+#  This UNIFIES the station identity on the same 8-byte model used by the
+#  datalogger format (tools/mla_datalogger.py) — the old divergent 6-byte
+#  region/number/reserved record is retired.
 #
 #  Binary layout:
 #     [0] sta_ver  1B  = MLA_STATION_VER
 #     [1] n        1B  number of stations (1..255); index i (1..n) → record i-1
-#     [2 ..]           n × 6 B raw records
+#     [2 ..]           n × ( identity(8 B) + elev_m(2 B i16 LE)
+#                            + name(32 B UTF-8 NUL-padded) )  = n × 42 B
 
 class MlaStationTable:
-    """Collect station records (6 raw bytes each) and emit the binary table.
+    """Collect station records (identity 8 B + elevation 2 B + name 32 B) → binary table.
 
-    The 6 bytes are opaque to MLA. Two convenience encoders are offered for the
-    common "region(2) + number(2) + reserved(2)" split, but you can push any
-    6 raw bytes via .raw(); the host glue decides what they mean.
+    The identity's 8 bytes are opaque to MLA; build them with dl_gps / dl_ident
+    / dl_raw. Elevation is signed metres (i16 LE); None → the 0x8000 sentinel
+    (unknown). ``name`` is a human label (UTF-8, ≤32 B, NUL-padded; "" = none).
+    Push a fully-formed 42-byte record via .raw() if you prefer.
     """
 
     def __init__(self) -> None:
         self.records: list[bytes] = []
 
-    def raw(self, six: bytes) -> "MlaStationTable":
-        if len(six) != MLA_STATION_REC:
-            raise ValueError(f"station record must be {MLA_STATION_REC} B, got {len(six)}")
+    def raw(self, ten: bytes) -> "MlaStationTable":
+        if len(ten) != MLA_STATION_REC:
+            raise ValueError(f"station record must be {MLA_STATION_REC} B, got {len(ten)}")
         if len(self.records) >= 255:
             raise ValueError("at most 255 stations (1-byte index)")
-        self.records.append(bytes(six))
+        self.records.append(bytes(ten))
         return self
 
-    def station(self, region: int = 0, number: int = 0,
-                reserved: int = 0xFFFF) -> "MlaStationTable":
-        """Convenience: region(2) + number(2) + reserved(2), all u16 LE."""
-        for name, v in (("region", region), ("number", number), ("reserved", reserved)):
-            if not 0 <= v <= 0xFFFF:
-                raise ValueError(f"{name} out of u16 range: {v}")
-        return self.raw(struct.pack("<HHH", region, number, reserved))
+    def station(self, identity: bytes, elev_m: int | None = None,
+                name: str = "") -> "MlaStationTable":
+        """Add a station: opaque ``identity`` + signed metres ``elev_m`` + ``name``.
+
+        ``identity`` is produced by dl_gps / dl_ident / dl_raw (exactly 8 B).
+        ``elev_m`` is signed metres; None → the 0x8000 (unknown) sentinel.
+        ``name`` is a human-readable label (UTF-8, ≤32 B, NUL-padded; "" = none).
+        """
+        if len(identity) != DL_IDENT_LEN:
+            raise ValueError(f"identity must be {DL_IDENT_LEN} B, got {len(identity)}")
+        return self.raw(bytes(identity) + dl_elev(elev_m) + _sta_name_bytes(name))
 
     def table(self) -> bytes:
         n = len(self.records)
@@ -369,10 +471,11 @@ def mla_station_byte_len(prefix: bytes, off: int) -> int:
 
 
 def mla_read_stations(prefix: bytes) -> list[bytes] | None:
-    """Decode the station table → list of 6-byte records (None if absent).
+    """Decode the station table → list of 42-byte records (None if absent).
 
     Index i in the log (1..n) maps to records[i-1]; index 0 means "no station".
-    The 6 bytes stay raw — the host glue translates them.
+    Each record is identity(8 B) + elev_m(2 B) + name(32 B); split it with
+    mla_split_station.
     """
     slen = mla_schema_byte_len(prefix)
     off  = MLA_SCHEMA_OFF + slen
@@ -386,11 +489,19 @@ def mla_read_stations(prefix: bytes) -> list[bytes] | None:
                          off + 2 + (i + 1) * MLA_STATION_REC]) for i in range(n)]
 
 
-def mla_split_station(record: bytes) -> tuple[int, int, int]:
-    """Convenience inverse of MlaStationTable.station(): (region, number, reserved)."""
+def mla_split_station(record: bytes) -> tuple[bytes, int | None, str]:
+    """Split a 42-byte station record into (identity8, elev_m, name).
+
+    ``identity8`` stays opaque (decode it with dl_gps_decode / your own scheme);
+    ``elev_m`` is signed metres or None when unset (the 0x8000 sentinel);
+    ``name`` is the human label (UTF-8, "" when the 32-byte field is all-zero).
+    """
     if len(record) != MLA_STATION_REC:
         raise ValueError(f"station record must be {MLA_STATION_REC} B")
-    return struct.unpack("<HHH", record)
+    identity = bytes(record[:DL_IDENT_LEN])
+    elev_m   = dl_elev_decode(record[DL_IDENT_LEN:DL_IDENT_LEN + MLA_ELEV_LEN])
+    name     = _sta_name_decode(record[DL_IDENT_LEN + MLA_ELEV_LEN:])
+    return identity, elev_m, name
 
 
 # ── Builder ────────────────────────────────────────────────────
@@ -535,12 +646,12 @@ if __name__ == "__main__":
     sb.data("rain",      unit="mm",   width=2, exp10=-1)
     # ─────────────────────────────────────────────────────────────────────────
 
-    # STATION table: index 1..n → (region, number). Filled by the host glue;
-    # here just an example of a few stations in one region.
+    # STATION table: index 1..n → (identity, elevation). Filled by the host glue;
+    # here a few stations in one region, with example elevations in metres.
     st = MlaStationTable()
-    st.station(region=55, number=25000)    # index 1
-    st.station(region=55, number=25001)    # index 2
-    st.station(region=55, number=25777)    # index 3 — gaps are fine
+    st.station(dl_ident(number=25000, region=55), elev_m=235, name="Praha-Klementinum")   # index 1
+    st.station(dl_ident(number=25001, region=55), elev_m=240, name="Praha-Karlov")        # index 2
+    st.station(dl_ident(number=25777, region=55))               # index 3 — elev/name unset
     station_table = st.table()
 
     table = sb.table()

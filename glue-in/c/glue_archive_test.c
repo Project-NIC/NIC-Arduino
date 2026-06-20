@@ -28,7 +28,13 @@ static const uint8_t SCHEMA[] = {
     2, 0, 0xFF, 0x01, 0,0, 't','e','m','p', 0,0,0,0,
     2, 0, 0xFF, 0x00, 0,0, 'h','u','m', 0,0,0,0,0,
 };
-static const uint8_t STATION[] = { MLA_STATION_VER, 2, 7,0, 100,0, 0,0,  8,0, 200,0, 0,0 };
+/* 2 stations, 42 B each: identity(8)=region,number,kind,reserved (u16 LE)
+ * + elev(2, i16 LE) + name(32 B UTF-8 NUL-padded). */
+#define STA_NAME_7  'n','o','d','e','-','7', 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+#define STA_NAME_8  'n','o','d','e','-','8', 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+static const uint8_t STATION[] = { MLA_STATION_VER, 2,
+                                   7,0, 100,0, 0,0, 0,0,  0xEB,0x00,  STA_NAME_7,
+                                   8,0, 200,0, 0,0, 0,0,  0xF0,0x00,  STA_NAME_8 };
 
 static uint8_t T1[NREC][4], T2[NREC][4], G1[NREC][4], G2[NREC][4];
 static int g1 = 0, g2 = 0, fail_kf = 0, fail_dec = 0;
