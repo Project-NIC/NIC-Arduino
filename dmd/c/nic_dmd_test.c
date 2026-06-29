@@ -74,6 +74,18 @@ int main() {
         check("reserved version", false);
     }
 
+    // Test 3: a crafted uANS length must be rejected, not overrun the n_raw buffer (OOB-write guard).
+    printf("\nTest 3: Malformed uANS length (OOB-write guard)\n");
+    dmd_decoder_t dec_ans;
+    dmd_decoder_init(&dec_ans, 16);
+    uint8_t bad_ans[16] = {0};
+    bad_ans[0] = (uint8_t)(1u << 6);   /* header: use_ans, sample_num 0, delta none */
+    bad_ans[1] = 200;                  /* uANS length = 200, far past n_raw=16 -> must be rejected */
+    uint8_t out_ans[16];
+    int rr = dmd_decompress(&dec_ans, bad_ans, 16, out_ans);
+    check("malformed uANS rejected", rr < 0);
+    printf("  %s (rr=%d)\n", rr < 0 ? "OK" : "FAIL — accepted a crafted length", rr);
+
     printf("\nTests done. Total errors: %d\n\n", total_errors);
     return (total_errors == 0) ? 0 : 1;
 }
