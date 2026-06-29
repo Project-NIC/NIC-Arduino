@@ -77,6 +77,7 @@ _SCHEMA_VERSION = "1.1"
 #  passes through unchanged (degC, Pa, hPa, V, A, W, count, lux, mm, ppm, …).
 _UNIT_NAME = {
     "m_s": "m/s",      # velocity (MEMS seismo)
+    "m_s2": "m/s**2",  # acceleration (ADXL355 / ICM seismo) — FDSN unit string
     "pct": "%",        # percent
     "unix_s": "s",     # Unix seconds → seconds
     "raw": "count",    # untyped/dimensionless → counts

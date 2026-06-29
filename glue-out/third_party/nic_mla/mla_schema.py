@@ -200,8 +200,9 @@ UNITS: dict[str, int] = {
     "Wh":     11, "kWh": 12, "MWh": 13,
     "unix_s": 14,           # Unix seconds
     "id":     15,           # identifier (station / region / channel)
-    "ppm":    16, "lux": 17, "m_s": 18,   # m/s
+    "ppm":    16, "lux": 17, "m_s": 18,   # m/s (velocity)
     "mm":     19, "count": 20,
+    "m_s2":   21,           # m/s² (acceleration — e.g. ADXL355 / ICM seismo)
 }
 MLA_UNIT_NAME = {v: k for k, v in UNITS.items()}
 
