@@ -227,9 +227,12 @@ class StationXmlExporter:
         cha = self._ex._channel_code(field, fi)          # SAME code as miniSEED
         rate = self._ex.rate                             # SAME rate as miniSEED
         # Overall gain = counts per physical unit = inverse of the field's
-        # exp10 scale (physical = (raw + offset) * 10**exp10; the additive
-        # offset is ignored for the sensitivity value, as documented).
-        sensitivity = 10.0 ** (-field.exp10)
+        # scale (physical = (raw + offset) * mantissa * 10**exp10; the additive
+        # offset is ignored for the sensitivity value, as documented). The mantissa
+        # (MLA v2, D50) lets the gain be the REAL sensitivity (e.g. the ADXL355's
+        # 26104 counts/(m/s²)), not just a power of ten. mantissa 0 ≡ 1.
+        _mant = getattr(field, "mantissa", 1) or 1
+        sensitivity = 1.0 / (_mant * 10.0 ** field.exp10)
         in_unit = _unit_name(field.unit)
         E = self._el
         out = [f'    <Channel code="{cha}" locationCode="{loc}" '
