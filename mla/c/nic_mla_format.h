@@ -70,8 +70,10 @@ static inline uint8_t mla_flags_kf_back(uint8_t flags)    { return (uint8_t)(fla
  * format() time. MLA does not interpret their contents.
  *
  *   SCHEMA table:  [0]=MLA_SCHEMA_VER  [1]=n_log  [2]=n_data  then
- *                  (n_log+n_data) × 14 B field descriptors
- *                  (width, unit, exp10, flags, offset[i16], name[8 B]).
+ *                  (n_log+n_data) × 16 B field descriptors
+ *                  (width, unit, exp10, flags, offset[i16], mantissa[i16], name[8 B]).
+ *                  v2 added `mantissa`: scale = mantissa × 10^exp10 (0 ≡ 1), so the
+ *                  user-chosen per-field scale is universal, not just powers of ten.
  *   STATION table: [0]=MLA_STATION_VER [1]=n  then n × 42 B records, each
  *                  identity(8 B, opaque to MLA — meaning is the glue's) +
  *                  elevation(2 B, i16 LE metres, 0x8000 = unknown) +
@@ -81,8 +83,8 @@ static inline uint8_t mla_flags_kf_back(uint8_t flags)    { return (uint8_t)(fla
  *                  region/number/reserved record is gone.
  */
 #define MLA_SCHEMA_OFF    MLA_PFX_HDR_SIZE             /* 34 */
-#define MLA_SCHEMA_VER    1u
-#define MLA_FIELD_SIZE    14u                          /* 6 core + 8 name */
+#define MLA_SCHEMA_VER    2u                           /* v2: + mantissa (universal scale) */
+#define MLA_FIELD_SIZE    16u                          /* 8 core + 8 name */
 #define MLA_STATION_VER   0x53u                        /* tag, distinct from schema ver */
 #define MLA_STA_NAME_LEN  32u                          /* human station name, UTF-8, NUL-padded */
 #define MLA_STATION_REC   (8u + 2u + MLA_STA_NAME_LEN) /* 42 — identity(8) + elev_m(i16) + name(32) */

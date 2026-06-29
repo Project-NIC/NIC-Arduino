@@ -8,27 +8,33 @@ The firmware embeds the table at format() time; any reader that links the MLA
 library (e.g. the Volkov editor) reads it back and can export to CSV/SQL
 WITHOUT any prior knowledge — the station carries everything itself.
 
-Each field carries its OWN descriptor (14 B), so you can add arbitrary fields
+Each field carries its OWN descriptor (16 B), so you can add arbitrary fields
 and they stay self-describing:
 
-    field descriptor (14 B):
-        [+0]  width  1 B   bytes on the wire (1 / 2 / 4)
-        [+1]  unit   1 B   code from the universal UNIT vocabulary (below)
-        [+2]  exp10  1 B   signed exponent (see formula)
-        [+3]  flags  1 B   bit0 = signed value; bits 1-7 reserved
-        [+4]  offset 2 B   i16 LE, additive calibration term
-        [+6]  name   8 B   field name, UTF-8, NUL-padded (host display / CSV header)
+    field descriptor (16 B):
+        [+0]  width    1 B   bytes on the wire (1 / 2 / 4)
+        [+1]  unit     1 B   code from the universal UNIT vocabulary (below)
+        [+2]  exp10    1 B   signed exponent (see formula)
+        [+3]  flags    1 B   bit0 = signed value; bits 1-7 reserved
+        [+4]  offset   2 B   i16 LE, additive calibration term
+        [+6]  mantissa 2 B   i16 LE, user scale numerator (0 ≡ 1); see formula
+        [+8]  name     8 B   field name, UTF-8, NUL-padded (host display / CSV header)
 
-    physical = (raw + offset) * 10**exp10
+    physical = (raw + offset) * mantissa * 10**exp10
 
-Table binary layout (contract version MLA_SCHEMA_VER = 1):
+    The `mantissa` (v2) makes the per-field scale UNIVERSAL and fully user-chosen:
+    exp10 alone gave only powers of ten, so 2× / 5× / a real sensitivity like the
+    ADXL355's 3.831e-5 m/s²/count (mantissa 3831, exp10 -8) were unreachable. mantissa
+    0 reads as 1, so an exp10-only field is unchanged.
 
-    [0] tbl_ver  1 B   = 1
+Table binary layout (contract version MLA_SCHEMA_VER = 2):
+
+    [0] tbl_ver  1 B   = 2
     [1] n_log    1 B   number of LOG fields
     [2] n_data   1 B   number of DATA fields
-    [3 ..]             n_log + n_data field descriptors (14 B each)
+    [3 ..]             n_log + n_data field descriptors (16 B each)
 
-    total = 3 + 14 * (n_log + n_data)
+    total = 3 + 16 * (n_log + n_data)
 
 The table lives at [34 ..) in the prefix and is covered by the prefix CRC. It
 normally fits the 512 B prefix; if it overflows, the prefix grows in whole
@@ -59,15 +65,16 @@ import struct
 from dataclasses import dataclass
 
 # ── Format constants (mirror nic_mla.py / nic_mla_format.h) ─────────────────
-MLA_SCHEMA_VER  = 1                       # schema-table contract version (independent
-                                          # of the MLA file format version)
+MLA_SCHEMA_VER  = 2                       # schema-table contract version (independent
+                                          # of the MLA file format version). v2 added the
+                                          # per-field `mantissa` (universal user scale, D50).
 MLA_SCHEMA_OFF  = 34                      # = MLA_PFX_HDR_SIZE
 MLA_PREFIX_SIZE = 512                     # base prefix sector; grows in 512 B steps
 MLA_MAX_PREFIX_SEC = 255                  # hard limit: 255 sectors (~127 KB) — theoretical
 MLA_REC_PREFIX_SEC = 16                   # recommended ceiling: 16 sectors (8 KB)
 MLA_NAME_LEN    = 8                       # bytes reserved for a field name, UTF-8, NUL-padded
-MLA_FIELD_CORE  = 6                       # width, unit, exp10, flags, offset[i16]
-MLA_FIELD_SIZE  = MLA_FIELD_CORE + MLA_NAME_LEN   # 14 — one field descriptor
+MLA_FIELD_CORE  = 8                       # width, unit, exp10, flags, offset[i16], mantissa[i16]
+MLA_FIELD_SIZE  = MLA_FIELD_CORE + MLA_NAME_LEN   # 16 — one field descriptor
 MLA_DATA_MAX    = 65535                   # max data payload per record (v1.1 log `length`
                                           # is u16). NOTE: if the payload is DMD-compressed,
                                           # the codec caps the *decoded* row at 255 B (its
@@ -204,9 +211,11 @@ class MlaField:
     name:   str          # column name — up to MLA_NAME_LEN bytes, carried on the wire
     width:  int          # 1 / 2 / 4
     unit:   str          # key into UNITS
-    exp10:  int = 0      # physical = (raw + offset) * 10**exp10
+    exp10:  int = 0      # physical = (raw + offset) * mantissa * 10**exp10
     signed: bool = False
     offset: int = 0      # i16 additive calibration term (raw units)
+    mantissa: int = 1    # i16 user scale: physical = (raw + offset) * mantissa * 10**exp10
+                         # (0 ≡ 1). Makes ANY scale settable — 2×, 5×, real sensitivities (D50, v2).
 
     def name_bytes(self) -> bytes:
         """The field name as exactly MLA_NAME_LEN bytes (UTF-8, NUL-padded)."""
@@ -216,7 +225,7 @@ class MlaField:
         return enc + b"\x00" * (MLA_NAME_LEN - len(enc))
 
     def descriptor(self) -> bytes:
-        """14 B: 6 B core (width, unit, exp10, flags, offset) + 8 B name."""
+        """16 B: 8 B core (width, unit, exp10, flags, offset[i16], mantissa[i16]) + 8 B name."""
         if self.width not in (1, 2, 4):
             raise ValueError(f"{self.name}: width must be 1/2/4, got {self.width}")
         if self.unit not in UNITS:
@@ -225,17 +234,20 @@ class MlaField:
             raise ValueError(f"{self.name}: exp10 out of signed-byte range")
         if not -32768 <= self.offset <= 32767:
             raise ValueError(f"{self.name}: offset out of i16 range")
+        if not -32768 <= self.mantissa <= 32767:
+            raise ValueError(f"{self.name}: mantissa out of i16 range")
         flags = 0x01 if self.signed else 0x00
         off = self.offset & 0xFFFF
+        man = self.mantissa & 0xFFFF
         core = bytes([self.width, UNITS[self.unit], self.exp10 & 0xFF, flags,
-                      off & 0xFF, (off >> 8) & 0xFF])
+                      off & 0xFF, (off >> 8) & 0xFF, man & 0xFF, (man >> 8) & 0xFF])
         return core + self.name_bytes()
 
     @classmethod
     def from_descriptor(cls, buf: bytes, name: str = "") -> "MlaField":
-        """Inverse of descriptor(): decode a 14 B descriptor back to a MlaField.
+        """Inverse of descriptor(): decode a 16 B descriptor back to a MlaField.
 
-        The name is read from [6:14]; if it is blank, the `name` argument (e.g. a
+        The name is read from [8:16]; if it is blank, the `name` argument (e.g. a
         generated placeholder) is used instead.
         """
         if len(buf) < MLA_FIELD_SIZE:
@@ -246,11 +258,13 @@ class MlaField:
         exp10  = exp10_raw - 256 if exp10_raw >= 128 else exp10_raw          # signed byte
         off    = buf[4] | (buf[5] << 8)
         offset = off - 0x10000 if off >= 0x8000 else off                    # i16 LE
+        man    = buf[6] | (buf[7] << 8)
+        mantissa = man - 0x10000 if man >= 0x8000 else man                  # i16 LE
         embedded = buf[MLA_FIELD_CORE:MLA_FIELD_SIZE].split(b"\x00", 1)[0]
         if embedded:
             name = embedded.decode("utf-8", "replace")
         return cls(name=name, width=width, unit=MLA_UNIT_NAME[unit_code],
-                   exp10=exp10, signed=bool(flags & 0x01), offset=offset)
+                   exp10=exp10, signed=bool(flags & 0x01), offset=offset, mantissa=mantissa)
 
 
 # ── MlaField presets (handy names for common data fields) ───────────────────────
@@ -320,15 +334,16 @@ def mla_read_schema(prefix: bytes) -> tuple[list[MlaField] | None, list[MlaField
 
 
 def mla_decode_value(field: MlaField, raw_bytes: bytes) -> float | int:
-    """Decode one packed field: physical = (raw + offset) * 10**exp10.
+    """Decode one packed field: physical = (raw + offset) * mantissa * 10**exp10.
 
     raw_bytes must be exactly field.width bytes (little-endian). The result is
-    int when exp10 >= 0, otherwise float.
+    int when exp10 >= 0, otherwise float. mantissa 0 ≡ 1 (exp10-only field).
     """
     if len(raw_bytes) != field.width:
         raise ValueError(f"{field.name}: expected {field.width} B, got {len(raw_bytes)}")
     raw = int.from_bytes(raw_bytes, "little", signed=field.signed)
-    scaled = raw + field.offset
+    mant = field.mantissa if field.mantissa != 0 else 1
+    scaled = (raw + field.offset) * mant
     if field.exp10 == 0:
         return scaled
     return scaled * (10 ** field.exp10 if field.exp10 > 0 else 10.0 ** field.exp10)
@@ -360,7 +375,7 @@ def mla_decode_payload(data_fields: list[MlaField],
 def mla_encode_value(field: MlaField, physical: float | int) -> bytes:
     """Pack one physical value into exactly field.width little-endian bytes.
 
-    Exact inverse of mla_decode_value: ``raw = round(physical / 10**exp10) - offset``
+    Exact inverse of mla_decode_value: ``raw = round(physical / (mantissa*10**exp10)) - offset``
     (so re-decoding yields the value back, quantised to the field's resolution).
     Raises ValueError if the result does not fit the field's width/signedness.
     """
@@ -368,7 +383,8 @@ def mla_encode_value(field: MlaField, physical: float | int) -> bytes:
         scaled = physical
     else:
         scaled = physical / (10 ** field.exp10 if field.exp10 > 0 else 10.0 ** field.exp10)
-    raw = int(round(scaled)) - field.offset
+    mant = field.mantissa if field.mantissa != 0 else 1
+    raw = int(round(scaled / mant)) - field.offset
     bits = field.width * 8
     if field.signed:
         lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
@@ -516,21 +532,21 @@ class MlaSchemaBuilder:
         self.log_fields:  list[MlaField] = []
         self.data_fields: list[MlaField] = []
 
-    def _make(self, name, unit, width, exp10, signed, offset) -> MlaField:
+    def _make(self, name, unit, width, exp10, signed, offset, mantissa) -> MlaField:
         if unit is None and name in MLA_SCHEMA_PRESETS:      # preset by name
             return MLA_SCHEMA_PRESETS[name]
         if unit is None:
             raise ValueError(f"'{name}' is not a preset — give unit/width explicitly")
-        return MlaField(name, width, unit, exp10, signed, offset)
+        return MlaField(name, width, unit, exp10, signed, offset, mantissa)
 
     def log(self, name, *, unit=None, width=2, exp10=0, signed=False,
-            offset=0) -> "MlaSchemaBuilder":
-        self.log_fields.append(self._make(name, unit, width, exp10, signed, offset))
+            offset=0, mantissa=1) -> "MlaSchemaBuilder":
+        self.log_fields.append(self._make(name, unit, width, exp10, signed, offset, mantissa))
         return self
 
     def data(self, name, *, unit=None, width=2, exp10=0, signed=False,
-             offset=0) -> "MlaSchemaBuilder":
-        self.data_fields.append(self._make(name, unit, width, exp10, signed, offset))
+             offset=0, mantissa=1) -> "MlaSchemaBuilder":
+        self.data_fields.append(self._make(name, unit, width, exp10, signed, offset, mantissa))
         return self
 
     # — outputs —
