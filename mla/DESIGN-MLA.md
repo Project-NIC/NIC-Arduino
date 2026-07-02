@@ -396,5 +396,3 @@ MLA is a dumb container; the following are deliberately **not** its job:
 This separation keeps MLA small enough for an ATmega (write-only, 16 B log, one
 512 B prefix sector) while letting a capable host build an arbitrarily smart
 system on top.
-
-*★ Viva La Resistánce ★*

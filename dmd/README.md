@@ -355,5 +355,3 @@ MIT License — Copyright (c) 2026 NIC — Native Intellect Community
 
 Brother for advice during the creation of this project.
 For technical assistance with code optimization to AI assistants Claude (Anthropic) and Gemini (Google).
-
-★ Viva La Resistánce ★

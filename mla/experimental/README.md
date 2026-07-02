@@ -19,5 +19,3 @@ Direct raw SPI-NOR/NAND was **abandoned** in favor of **SD/flash cards**:
 - **No real SPI-NOR HAL is being written** (even in C). C libraries target SD (SdFat).
 - The simulator and its tests remain functional (the kernel is independent of the medium via HAL), but this serves as a **proof of universality**, not a supported scenario.
 - If you ever revive it, keep in mind that the commit protocol (LOCK first, flags outside CRC) is designed for NOR on purpose — but you'll need to verify lockdown risks for specific chips in their datasheets.
-
-★ Viva La Resistánce ★

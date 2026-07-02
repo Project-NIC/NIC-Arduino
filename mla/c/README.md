@@ -111,5 +111,3 @@ python3 cross_check.py /tmp/mla_c_out.bin   # byte-exact C↔Python ověření (
 - Rotace souborů a komprese jsou mimo toto jádro (rotace = platformní lepidlo nad
   FS; komprese = samostatná metoda, kontejner ji jen značí bitem `compressed`
   + `kf_back`, kodek žije v hlavičce datového bloku).
-
-★ Viva La Resistánce ★
