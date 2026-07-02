@@ -199,21 +199,24 @@ on the rest (electricity meters, seismology, …).
 electricity, seismic, radiation, …). The compressor uses the table that matches the data — a table
 trained on *your* data beats the universal one. (Same idea as the trained dictionaries in Zstandard.)
 
-**How it fits the format — and why the MLA needs no change:**
-- A **table ID** goes into the DMD **packet header** (an extra field / second header byte, present only
-  when the Huffman method is chosen). The decoder reads the ID and picks the matching table, so a DMD
-  packet stays **self-describing** — the MLA / glue does **not** have to record which table was used.
-- The **encoder** chooses the table through the **glue / schema**, which already knows what each record
-  is (weather vs GPS vs radiation …). That is where "switch the table per data type" happens.
-- Because the header is **per packet**, switching is **automatic per record** — one mixed MLA (several
-  stations or sensor types) gets the best table for each record for free.
-- **Table ID 0 = the current universal table**, so old packets and old behaviour are unchanged
-  (backward compatible).
+**How it fits — without touching the 1-byte header:**
+The header is already full and **must stay 1 byte** — a bigger header would eat the savings on small
+packets, which is DMD's whole point. So the table is **not** carried per packet. It is a **session /
+init parameter, exactly like the packet length** — which also isn't in the packet and must match on
+both ends. Both sides call `dmd_init(len, table_id)`; **zero extra bytes on the wire.**
+- **One LoRa link:** both ends are configured with the same table for that link. To switch, re-init
+  with another table between streams.
+- **Stored in an MLA:** the table ID lives **once in the schema, per record type** (the glue already
+  describes each record) — the decoder reads it from the schema, not from each packet. So a mixed MLA
+  still gets the right table per data type and the DMD packets stay untouched.
+- **Table ID 0 = the current universal table** → old data and old behaviour unchanged (backward
+  compatible).
 
 **Why now and not on the ATmega328:** the original kept one 32 B table because the ATmega had only
 32 KB of flash. On today's parts (e.g. 512 KB) several tables fit easily. The **code and speed stay the
-same** — the compressor just points at a different table; only flash grows, plus a few header bits when
-Huffman is used. Both ends must share the same table library, keyed by ID.
+same** — the compressor just points at a different table; only flash grows and the **wire format is
+unchanged** (the table is an init parameter, not a header field). Both ends must share the same table
+library, keyed by ID.
 
 ---
 
