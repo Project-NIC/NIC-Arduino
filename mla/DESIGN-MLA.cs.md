@@ -396,5 +396,3 @@ MLA je hloupý kontejner; následující záměrně **není** jeho práce:
 Tahle separace drží MLA dost malé pro ATmega (jen zápis, 16 B log, jeden 512 B
 sektor prefixu), a přitom dovolí výkonnému hostu postavit nad ním libovolně
 chytrý systém.
-
-*★ Viva La Resistánce ★*

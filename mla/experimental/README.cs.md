@@ -31,5 +31,3 @@ Přímý raw SPI-NOR/NAND jsme **opustili** ve prospěch **SD/flash karty**:
 - Pokud bys to někdy oživoval, počítej s tím, že commit protokol (LOCK first,
   flags mimo CRC) je na NOR navržený schválně — ale lockdown rizika konkrétních
   čipů si musíš ověřit v datasheetu.
-
-★ Viva La Resistánce ★

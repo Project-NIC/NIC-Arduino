@@ -7,7 +7,7 @@
 ---
 # NIC-KSF — Kolmogorov Shannon Feistel
 
-## Šifrovací protokol pro embedded zařízení
+## Šifrovací knihovna pro embedded zařízení
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
 
@@ -15,7 +15,9 @@
 
 ## Co je KSF?
 
-NIC-KSF je odlehčená symetrická šifrovací knihovna postavená na blokové šifře **SPECK-128** v režimu **CTR (čítačový mód)**. Je navržena pro mikrokontroléry s omezenými prostředky, jako je ATmega328, kde je RAM a Flash vzácná a výpočetní náročnost musí být minimální.
+NIC-KSF **zamíchá data tak, aby je přečetl jen ten, kdo drží klíč** — ten malý, rychlý druh šifrování, který se ještě vejde do drobného mikrokontroléru.
+
+Uvnitř je to odlehčená symetrická šifra postavená na blokové šifře **SPECK-128** v režimu **CTR (čítačový mód)**, navržená pro součástky s omezenými prostředky, jako je ATmega328, kde je RAM a Flash vzácná a výpočetní náročnost musí být minimální.
 
 Knihovna má jedinou jasnou odpovědnost: **zašifrovat nebo dešifrovat blok dat pomocí 128bitového klíče**. Veškerá správa klíčů, odvozování klíčů, správa relací a protokolová logika jsou záměrně přenechány vyšším vrstvám.
 
@@ -147,5 +149,3 @@ MIT License — Copyright (c) 2026 NIC — Native Intellect Community
 
 Bratrovi za rady při tvorbě tohoto projektu.
 Za technickou asistenci s optimalizací kódu AI asistentům Claude (Anthropic) a Gemini (Google).
-
-★ Viva La Resistánce ★

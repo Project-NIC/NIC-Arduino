@@ -349,6 +349,40 @@ Vzorek s číslem 0 je keyframe. Protože neexistuje předchozí paket pro výpo
 
 ---
 
+## Roadmap — doménové tabulky (multi-tabulkový Huffman)
+
+*Zatím neimplementováno — tady je návrh zapsaný, aby se neztratil.*
+
+Dnes Huffmanova metoda (metoda 4) používá **jednu pevnou tabulku**, natrénovanou na kombinovaných
+meteo + GPS datech a zapečenou v ROM. Tahle jediná tabulka je kompromis: „univerzální" tabulka nikdy
+nemůže být skvělá na všechno — musí pokrýt každý případ, takže si vede dobře na datech podobných těm,
+na kterých se trénovala, a hůř na zbytku (elektroměry, seismika, …).
+
+**Nápad:** držet malou **knihovnu tabulek**, každou natrénovanou na jeden druh dat (meteo, GPS,
+elektřina, seismika, radiace, …). Kompresor použije tu tabulku, která sedí na data — tabulka
+natrénovaná na *tvých* datech porazí univerzální. (Stejný princip jako trénované slovníky v Zstandardu.)
+
+**Jak to zapadne — bez sáhnutí na 1bajtovou hlavičku:**
+Hlavička je už plná a **musí zůstat 1 bajt** — větší hlavička by sežrala úsporu u malých paketů, což je
+celý smysl DMD. Tabulka se proto **nenese** v každém paketu. Je to **session / init parametr, přesně
+jako délka paketu** — která taky není v paketu a musí sedět na obou stranách. Obě strany zavolají
+`dmd_init(len, table_id)`; **nula bajtů navíc na lince.**
+- **Jedna LoRa linka:** obě strany jsou nakonfigurované na stejnou tabulku pro tu linku. Pro přepnutí
+  se mezi streamy re-inicializuje s jinou tabulkou.
+- **Uloženo v MLA:** ID tabulky žije **jednou ve schématu, na typ záznamu** (glue už každý záznam
+  popisuje) — dekodér ho čte ze schématu, ne z každého paketu. Takže smíšená MLA pořád dostane
+  správnou tabulku podle typu dat a DMD pakety zůstávají nedotčené.
+- **ID tabulky 0 = současná univerzální tabulka** → stará data i staré chování beze změny (zpětně
+  kompatibilní).
+
+**Proč teď a ne na ATmega328:** originál držel jednu 32B tabulku, protože ATmega měla jen 32 KB flash.
+Na dnešních součástkách (např. 512 KB) se několik tabulek pohodlně vejde. **Kód i rychlost zůstávají
+stejné** — kompresor jen ukáže na jinou tabulku; roste jen flash a **formát na lince se nemění**
+(tabulka je init parametr, ne pole v hlavičce). Obě strany musí sdílet stejnou knihovnu tabulek,
+klíčovanou podle ID.
+
+---
+
 ## Použití
 
 ### Python
@@ -484,5 +518,3 @@ MIT License — Copyright (c) 2026 NIC — Native Intellect Community
 
 Bratrovi za rady při tvorbě tohoto projektu.
 Za technickou asistenci s optimalizací kódu AI asistentům Claude (Anthropic) a Gemini (Google).
-
-★ Viva La Resistánce ★
