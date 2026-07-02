@@ -186,6 +186,37 @@ The sample with number 0 is a keyframe. Since there is no previous packet to cal
 
 ---
 
+## Roadmap — domain tables (multi-table Huffman)
+
+*Not yet implemented — this records the design so it isn't lost.*
+
+Today the Huffman method (method 4) uses **one fixed table**, trained on combined weather + GPS data,
+baked into ROM. That single table is a compromise: a "universal" table can never be great for
+everything — it has to cover every case, so it does well on data like what it was trained on and worse
+on the rest (electricity meters, seismology, …).
+
+**The idea:** keep a small **library of tables**, each trained on one kind of data (weather, GPS,
+electricity, seismic, radiation, …). The compressor uses the table that matches the data — a table
+trained on *your* data beats the universal one. (Same idea as the trained dictionaries in Zstandard.)
+
+**How it fits the format — and why the MLA needs no change:**
+- A **table ID** goes into the DMD **packet header** (an extra field / second header byte, present only
+  when the Huffman method is chosen). The decoder reads the ID and picks the matching table, so a DMD
+  packet stays **self-describing** — the MLA / glue does **not** have to record which table was used.
+- The **encoder** chooses the table through the **glue / schema**, which already knows what each record
+  is (weather vs GPS vs radiation …). That is where "switch the table per data type" happens.
+- Because the header is **per packet**, switching is **automatic per record** — one mixed MLA (several
+  stations or sensor types) gets the best table for each record for free.
+- **Table ID 0 = the current universal table**, so old packets and old behaviour are unchanged
+  (backward compatible).
+
+**Why now and not on the ATmega328:** the original kept one 32 B table because the ATmega had only
+32 KB of flash. On today's parts (e.g. 512 KB) several tables fit easily. The **code and speed stay the
+same** — the compressor just points at a different table; only flash grows, plus a few header bits when
+Huffman is used. Both ends must share the same table library, keyed by ID.
+
+---
+
 ## Usage
 
 ### Python
