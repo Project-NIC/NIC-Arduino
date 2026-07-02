@@ -16,7 +16,12 @@
 
 ## What is KSF?
 
-NIC-KSF is a lightweight symmetric encryption library built on the **SPECK-128** block cipher operating in **CTR (Counter) mode**. It is designed for resource-constrained microcontrollers such as the ATmega328, where RAM and Flash are scarce and computational overhead must be minimal.
+NIC-KSF **scrambles data so only whoever holds the key can read it** — the small, fast kind of
+encryption that still fits on a tiny microcontroller.
+
+Under the hood it is a lightweight symmetric cipher built on **SPECK-128** in **CTR (Counter) mode**,
+designed for resource-constrained parts such as the ATmega328, where RAM and Flash are scarce and
+computational overhead must be minimal.
 
 The library has a single, clear responsibility: **encrypt or decrypt a block of data using a 128-bit key**. All key management, key derivation, session handling, and protocol logic are intentionally delegated to higher-level layers.
 
@@ -147,5 +152,3 @@ MIT License — Copyright (c) 2026 NIC — Native Intellect Community
 
 To my brother for advice during the development of this project.
 For technical assistance with code optimisation, to AI assistants Claude (Anthropic) and Gemini (Google).
-
-★ Viva La Resistánce ★
