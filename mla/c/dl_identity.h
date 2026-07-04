@@ -24,7 +24,7 @@
 
 /*
  * GPS — latitude + longitude as 2× i32, degrees × 1e7 (~1 cm). This is the form a
- * u-blox / UM980 already reports, so no float is needed on the write path.
+ * u-blox / UM980C already reports, so no float is needed on the write path.
  * Recommended for a fixed station: the location IS the identity.
  */
 static inline void dl_gps(int32_t lat_e7, int32_t lon_e7, uint8_t out[DL_IDENT_LEN]) {
