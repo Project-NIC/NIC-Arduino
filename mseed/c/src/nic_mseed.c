@@ -8,6 +8,14 @@
  * power-of-two record (default 512 B -> 7 frames). Exactly the layout libmseed /
  * ObsPy / SeisComP read. Only FSDH + B1000 are emitted (the universal subset).
  */
+/* Expose gmtime_r (POSIX) and timegm (glibc/BSD) — must precede any include.
+   Without it a strict -std=c11 build (extensions off) implicitly declares both,
+   truncating the returned time_t/pointer to int on LP64. The shipped CMake build
+   uses -std=gnu11 so it never tripped, but the header claims portable C11. */
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
+#endif
+
 #include "nic_mseed.h"
 
 #include <math.h>
