@@ -524,6 +524,11 @@ int dmd_decompress(dmd_decoder_t *dec, const uint8_t *input, uint16_t in_len, ui
     } else if (use_huf) {
         if (_huffman_decode(payload, payload_len, n_raw, work) < 0) return -1;
     } else if (use_ans) {
+        /* The ANS payload's first byte is the output count. Reject any packet
+           that does not declare exactly n_raw bytes — otherwise _uans_decode
+           writes payload[0] bytes into `work` (sized n_raw), an OOB write on a
+           crafted/corrupt packet. Mirrors the FLAG / FLAG+HUF guards below. */
+        if (payload_len < 1 || payload[0] != n_raw) return -1;
         if (_uans_decode(payload, payload_len, work) < 0) return -1;
     } else if (use_flag) {
         if (payload_len == 0) return -1;

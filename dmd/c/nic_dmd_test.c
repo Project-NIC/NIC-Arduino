@@ -74,6 +74,24 @@ int main() {
         check("reserved version", false);
     }
 
+    // Test 3: Malformed ANS packet must be rejected, not written OOB.
+    // A crafted ANS payload whose length byte (payload[0]) exceeds the
+    // channel's pkt_len used to drive an out-of-bounds write in _uans_decode.
+    printf("\nTest 3: Malformed ANS packet (length byte != pkt_len)\n");
+    dmd_decoder_t dec_ans;
+    dmd_decoder_init(&dec_ans, 32);
+    uint8_t bad_ans[8] = {0};
+    bad_ans[0] = (1 << 6);  // header: use_ans, sample_num 0
+    bad_ans[1] = 0xFF;      // ANS output count = 255, far above pkt_len 32
+    uint8_t ans_out[32];
+    int res_ans = dmd_decompress(&dec_ans, bad_ans, sizeof bad_ans, ans_out);
+    if (res_ans < 0) {
+        printf("  OK (rejected with %d — no OOB write)\n", res_ans);
+    } else {
+        printf("  FAIL: decoder accepted an ANS packet claiming 255 bytes!\n");
+        check("malformed ANS rejected", false);
+    }
+
     printf("\nTests done. Total errors: %d\n\n", total_errors);
     return (total_errors == 0) ? 0 : 1;
 }

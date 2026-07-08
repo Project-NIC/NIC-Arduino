@@ -757,6 +757,12 @@ def dmd_decompress(data: bytes, previous: bytes) -> bytes:
     elif h['use_huf']:
         work = bytearray(_huffman_decode(payload, pkt_len))
     elif h['use_ans']:
+        # The ANS payload's first byte is the output count. Reject any packet
+        # that does not declare exactly pkt_len bytes — mirrors the C guard and
+        # the FLAG branches; without it a crafted packet yields a wrong-length
+        # row and poisons the stateful decoder's `previous`.
+        if len(payload) < 1 or payload[0] != pkt_len:
+            raise ValueError("DMD: ANS length byte does not match pkt_len")
         work = bytearray(_uans_decode(payload))
     elif h['use_flag']:
         work = bytearray(_flag_decode(payload))

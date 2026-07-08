@@ -94,6 +94,18 @@ try:
 except ValueError:
     print("  OK (ValueError correctly raised for unsupported version)")
 
+# Test 5b: Malformed ANS packet — the length byte must match pkt_len, else the
+# packet is rejected (the C side would otherwise write out-of-bounds).
+print("\nTest 5b: Malformed ANS packet (length byte != pkt_len)")
+total += 1
+bad_ans = bytes([1 << 6, 0xFF, 0, 0, 0, 0, 0, 0])  # use_ans, count=255, pkt_len 32
+try:
+    dmd_decompress(bad_ans, bytes(32))
+    print("  FAIL: Decoder accepted an ANS packet claiming 255 bytes!")
+    errors += 1
+except ValueError:
+    print("  OK (ValueError correctly raised for ANS length mismatch)")
+
 # Test 6: method coverage — exercise the RAW / ANS / HUF / FLAG / FLAG+HUF paths
 print("\nTest 6: method coverage (every encode path round-trips)")
 from nic_dmd import parse_header
