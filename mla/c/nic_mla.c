@@ -138,20 +138,17 @@ static int read_prefix(mla_hal_t *hal, mla_prefix_t *p, uint32_t *psize_out) {
     if (read_prefix_at(hal, fs - MLA_PREFIX_SIZE, p, psize_out) == MLA_OK
         && (psize_out == 0 || *psize_out == MLA_PREFIX_SIZE))
         return MLA_OK;
-    /* Extended (>512 B) prefix: derive the size from the (corrupt) primary
-     * table headers — best effort — and read the whole mirror from the tail. */
-    {
-        uint8_t th[5], sh[2];
-        uint16_t sl = 0, st = 0;
-        if (hal->read(hal->ctx, MLA_SCHEMA_OFF, th, 5) == 0) {
-            if (th[0] == MLA_SCHEMA_VER) sl = mla_schema_size(th[1], th[2]);
-            else if (th[0] == 0x4Cu)     sl = mla_datalogger_size(hal, 0);
-        }
-        if (hal->read(hal->ctx, MLA_SCHEMA_OFF + sl, sh, 2) == 0 && sh[0] == MLA_STATION_VER)
-            st = mla_station_size(sh[1]);
-        ps = mla_prefix_size(sl, st);
-        if (ps > MLA_PREFIX_SIZE)
-            return read_prefix_at(hal, fs - ps, p, psize_out);
+    /* Extended (>512 B) prefix: the primary is corrupt, so its table headers cannot
+     * be trusted to size the mirror. Prefixes are a whole number of 512 B sectors, so
+     * scan candidate sector counts and accept the first tail mirror that mounts clean —
+     * the intact mirror sizes ITSELF (its own header/tables + CRC), no dependence on
+     * the corrupt primary. Bounded by the recommended ceiling (MLA_REC_PREFIX_SEC). */
+    for (ps = 2u; ps <= MLA_REC_PREFIX_SEC; ps++) {
+        uint32_t bytes = ps * MLA_PREFIX_SIZE;
+        if (fs < bytes) break;
+        if (read_prefix_at(hal, fs - bytes, p, psize_out) == MLA_OK
+            && (psize_out == 0 || *psize_out == bytes))
+            return MLA_OK;
     }
     return MLA_E_BADFMT;
 }
@@ -386,6 +383,8 @@ int mla_recover(mla_t *m, mla_hal_t hal, uint32_t *out_count) {
         if (mb[0] != MLA_DATA_MAGIC0 || mb[1] != MLA_DATA_MAGIC1) { pos++; continue; }
         {
             int found = 0;
+            uint32_t chosen = 0;      /* accepted length */
+            uint32_t first_crc = 0;   /* shortest CRC-matching length (fallback) */
             for (length = 1; length <= 65535u; length++) {
                 uint32_t end = pos + 2u + length + 2u;
                 uint16_t crc = 0xFFFFu;
@@ -400,6 +399,26 @@ int mla_recover(mla_t *m, mla_hal_t hal, uint32_t *out_count) {
                 }
                 if (m->hal.read(m->hal.ctx, pos + 2u + length, crcb, 2) != 0) return MLA_E_IO;
                 if (crc == mla_get_u16(crcb)) {
+                    /* Prefer a length whose end lands on the NEXT record's MAGIC — a lone
+                     * CRC match at a wrong length is ~1/65536 likely per length tried and
+                     * would resync the scan to a bogus boundary. Remember the shortest CRC
+                     * match as a fallback for the LAST record (followed by free space, not
+                     * MAGIC), so this doesn't drop a legitimate final record. */
+                    if (first_crc == 0) first_crc = length;
+                    if (end + 2u <= lt) {
+                        uint8_t nb[2];
+                        if (m->hal.read(m->hal.ctx, end, nb, 2) != 0) return MLA_E_IO;
+                        if (nb[0] == MLA_DATA_MAGIC0 && nb[1] == MLA_DATA_MAGIC1) { chosen = length; break; }
+                        continue;   /* not a boundary — keep looking for a confirmed length */
+                    }
+                    chosen = length; break;   /* no room for another record → last record */
+                }
+            }
+            if (chosen == 0) chosen = first_crc;   /* no MAGIC-confirmed match → shortest CRC match */
+            if (chosen) {
+                length = chosen;
+                {
+                    uint32_t end = pos + 2u + length + 2u;
                     if (data_end + 4u <= bot - rs) {
                         mla_log_t r;
                         uint8_t lb[MLA_LOG_REC_SIZE];
@@ -411,7 +430,6 @@ int mla_recover(mla_t *m, mla_hal_t hal, uint32_t *out_count) {
                         bot = new_bot; m->n_slots++; m->count++;
                     }
                     data_end = end; pos = end; found = 1;
-                    break;
                 }
             }
             if (!found) pos++;
