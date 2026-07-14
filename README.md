@@ -19,13 +19,13 @@ together here so it is clear what belongs to what.
 
 ```
 NIC-Arduino  (the Arduino family)
-├── mla/         the base — the NIC-MLA log container/format
-├── dmd/         optional: NIC-DMD compression
-├── ksf/         optional: NIC-KSF encryption
-├── glue-in/     glue: write data into an MLA log
-├── glue-out/    glue: read / export an MLA log (CSV, SQLite, …)
-├── mseed/       seismo export: an MLA log → miniSEED (international standard)
-└── vde/         the VDE viewer (Volkov Data) — browse & export MLA logs
+├── NIC-MLA       the base — the NIC-MLA log container/format
+├── NIC-DMD       optional: NIC-DMD compression
+├── NIC-KSF       optional: NIC-KSF encryption
+├── NIC-GLUE-IN   glue: write data into an MLA log
+├── NIC-GLUE-OUT  glue: read / export an MLA log (CSV, SQLite, …)
+├── NIC-MSEED     seismo export: an MLA log → miniSEED (international standard)
+└── VDE           the VDE viewer (Volkov Data) — browse & export MLA logs
 ```
 
 ## How it fits together

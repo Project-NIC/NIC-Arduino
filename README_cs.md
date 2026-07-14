@@ -19,13 +19,13 @@ tady, aby bylo jasné, co kam patří.
 
 ```
 NIC-Arduino  (Arduino rodina)
-├── mla/         základ — kontejner/formát logu NIC-MLA
-├── dmd/         volitelné: komprese NIC-DMD
-├── ksf/         volitelné: šifrování NIC-KSF
-├── glue-in/     lepidlo: zápis dat do MLA logu
-├── glue-out/    lepidlo: čtení / export MLA logu (CSV, SQLite, …)
-├── mseed/       seismo export: MLA log → miniSEED (mezinárodní standard)
-└── vde/         prohlížeč VDE (Volkov Data) — procházení a export MLA logů
+├── NIC-MLA       základ — kontejner/formát logu NIC-MLA
+├── NIC-DMD       volitelné: komprese NIC-DMD
+├── NIC-KSF       volitelné: šifrování NIC-KSF
+├── NIC-GLUE-IN   lepidlo: zápis dat do MLA logu
+├── NIC-GLUE-OUT  lepidlo: čtení / export MLA logu (CSV, SQLite, …)
+├── NIC-MSEED     seismo export: MLA log → miniSEED (mezinárodní standard)
+└── VDE           prohlížeč VDE (Volkov Data) — procházení a export MLA logů
 ```
 
 ## Jak to do sebe zapadá
