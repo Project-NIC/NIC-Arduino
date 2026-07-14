@@ -25,7 +25,7 @@ NIC-Arduino  (the Arduino family)
 ├── NIC-GLUE-IN   glue: write data into an MLA log
 ├── NIC-GLUE-OUT  glue: read / export an MLA log (CSV, SQLite, …)
 ├── NIC-MSEED     seismo export: an MLA log → miniSEED (international standard)
-└── VDE           the VDE viewer (Volkov Data) — browse & export MLA logs
+└── NIC-VDE       the VDE viewer (Volkov Data) — browse & export MLA logs
 ```
 
 ## How it fits together

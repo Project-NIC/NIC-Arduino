@@ -26,7 +26,7 @@ NIC-Arduino  (семейство Arduino)
 ├── NIC-GLUE-IN   клей: запись данных в лог MLA
 ├── NIC-GLUE-OUT  клей: чтение / экспорт лога MLA (CSV, SQLite, …)
 ├── NIC-MSEED     сейсмо-экспорт: лог MLA → miniSEED (международный стандарт)
-└── VDE           просмотрщик VDE (Volkov Data) — просмотр и экспорт логов MLA
+└── NIC-VDE       просмотрщик VDE (Volkov Data) — просмотр и экспорт логов MLA
 ```
 
 ## Как это складывается вместе

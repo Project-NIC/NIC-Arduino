@@ -25,7 +25,7 @@ NIC-Arduino  (Arduino rodina)
 ├── NIC-GLUE-IN   lepidlo: zápis dat do MLA logu
 ├── NIC-GLUE-OUT  lepidlo: čtení / export MLA logu (CSV, SQLite, …)
 ├── NIC-MSEED     seismo export: MLA log → miniSEED (mezinárodní standard)
-└── VDE           prohlížeč VDE (Volkov Data) — procházení a export MLA logů
+└── NIC-VDE       prohlížeč VDE (Volkov Data) — procházení a export MLA logů
 ```
 
 ## Jak to do sebe zapadá
