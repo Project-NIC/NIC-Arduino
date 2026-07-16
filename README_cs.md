@@ -25,6 +25,7 @@ NIC-Arduino  (Arduino rodina)
 ├── NIC-GLUE-IN   lepidlo: zápis dat do MLA logu
 ├── NIC-GLUE-OUT  lepidlo: čtení / export MLA logu (CSV, SQLite, …)
 ├── NIC-MSEED     seismo export: MLA log → miniSEED (mezinárodní standard)
+├── NIC-IAGA      geomag export: MLA log → IAGA-2002 (INTERMAGNET / SuperMAG)
 └── NIC-VDE       prohlížeč VDE (Volkov Data) — procházení a export MLA logů
 ```
 
@@ -47,6 +48,9 @@ Všechno ostatní je **volitelné, navrstvené nad MLA — bonus, ne podmínka:*
   když chceš *mezinárodní* seismologický formát, mseed ten MLA log převede do
   miniSEED (ObsPy / SeisComp / FDSN). Vznikl pro seismo platformu; že to může
   použít i někdo jiný, je bonus.
+- **iaga/** — geomag export. Magnetometr NIC-Gauss ukládá do MLA; iaga ten log
+  převede do IAGA-2002 (výměnný formát INTERMAGNETu a vstup SuperMAGu pro
+  variometry) — kalibrované nT, `Data Type: variation`.
 - **vde/** — prohlížeč VDE (Volkov Data): desktopová aplikace na procházení a
   export MLA logů.
 

@@ -25,6 +25,7 @@ NIC-Arduino  (the Arduino family)
 ├── NIC-GLUE-IN   glue: write data into an MLA log
 ├── NIC-GLUE-OUT  glue: read / export an MLA log (CSV, SQLite, …)
 ├── NIC-MSEED     seismo export: an MLA log → miniSEED (international standard)
+├── NIC-IAGA      geomag export: an MLA log → IAGA-2002 (INTERMAGNET / SuperMAG)
 └── NIC-VDE       the VDE viewer (Volkov Data) — browse & export MLA logs
 ```
 
@@ -48,6 +49,9 @@ requirement:**
   to MLA; when you want the *international* seismology format, mseed turns that
   MLA log into miniSEED (ObsPy / SeisComp / FDSN). It exists for the seismo
   platform; that anyone else can reuse it is a bonus.
+- **iaga/** — the geomag export. A NIC-Gauss magnetometer stores to MLA; iaga
+  turns that log into IAGA-2002 (the INTERMAGNET exchange format, and what
+  SuperMAG ingests from variometers) — calibrated nT, `Data Type: variation`.
 - **vde/** — the VDE (Volkov Data) viewer: a desktop app that browses and
   exports MLA logs.
 
@@ -63,6 +67,7 @@ cd vde && python3 -m unittest discover -s tests
 # dmd (C + Python)                              cd dmd   && make test
 # ksf (C 32/64-bit)                             cd ksf   && make
 # mseed (Python + C)                            cd mseed && python3 tests/test_mseed.py
+# iaga (Python)                                 cd iaga  && python3 tests/test_iaga.py
 # glue-in / glue-out (Python)                   cd glue-in && python3 tests/test_glue.py
 ```
 
