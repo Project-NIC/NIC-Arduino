@@ -160,7 +160,7 @@ is **one 512 B sector**; if the tables don't fit it grows in whole 512 B sectors
 > rotation/close; 0 while the file is live). This lets a store-and-forward uplink narrow a
 > catch-up to the right rotation file from the **header alone**, without opening each file's
 > LOG. Non-breaking: v1.1 writes [12] = 0 and readers fall back to probing each file's first
-> LOG record. See NIC-Station `SESSION_HANDOFF.md` §11 / core `DESIGN.md` D30.
+> LOG record. See NIC-Heimdall `SESSION_HANDOFF.md` §11 / core `DESIGN.md` D30.
 
 ### 3.1 SCHEMA table — field names/units for CSV/SQL
 

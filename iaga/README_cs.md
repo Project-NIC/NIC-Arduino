@@ -20,7 +20,7 @@
 > po světě). NIC-Gauss je variometr (hlásí *odchylku* pole, ne absolutní hodnoty),
 > takže data odcházejí deklarovaná `Data Type: variation` — přesně třída, kterou
 > SuperMAG bere; absolutní baseline zůstává práce observatoří (variometrická
-> doktrína, nic-station `gauss/README.md`). NIC-IAGA je ten most — přečte `.mla`,
+> doktrína, NIC-Heimdall `gauss/README.md`). NIC-IAGA je ten most — přečte `.mla`,
 > rozbalí NIC-DMD bloby, aplikuje kalibraci ze SCHEMA
 > (`fyzikální = (raw + offset) · 10^exp10` → **nT, ne county**) a zapíše standardní
 > IAGA-2002 text, jeden soubor na stanici. **Hotová knihovna, ne framework.**

@@ -44,7 +44,7 @@ Všechno ostatní je **volitelné, navrstvené nad MLA — bonus, ne podmínka:*
   volitelné.
 - **glue-in/ · glue-out/** — lepidlo, které zapisuje do MLA logu a čte/exportuje
   z něj. Knihovny jsou díly; lepidlo je propojuje podle použití.
-- **mseed/** — seismo export. Seismograf NIC-Quake / NIC-Station ukládá do MLA;
+- **mseed/** — seismo export. Seismograf NIC-Quake / NIC-Heimdall ukládá do MLA;
   když chceš *mezinárodní* seismologický formát, mseed ten MLA log převede do
   miniSEED (ObsPy / SeisComp / FDSN). Vznikl pro seismo platformu; že to může
   použít i někdo jiný, je bonus.

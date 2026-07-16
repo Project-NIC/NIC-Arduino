@@ -20,7 +20,7 @@
 > its ~600 variometers worldwide. NIC-Gauss is a variometer (it reports field
 > *deviation*, not absolutes), so its data goes out declared `Data Type: variation` —
 > exactly the class SuperMAG takes; the absolute baseline stays the observatories' job
-> (the variometer doctrine, nic-station `gauss/README.md`). NIC-IAGA is the bridge —
+> (the variometer doctrine, NIC-Heimdall `gauss/README.md`). NIC-IAGA is the bridge —
 > it reads a `.mla`, decompresses NIC-DMD blobs, applies the SCHEMA calibration
 > (`physical = (raw + offset) · 10^exp10` → **nT, not counts**) and writes standard
 > IAGA-2002 text, one file per station. **A worked library, not a framework.**

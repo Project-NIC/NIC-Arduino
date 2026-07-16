@@ -45,7 +45,7 @@ requirement:**
   Again optional.
 - **glue-in/ · glue-out/** — the glue that writes into and reads/exports out of
   an MLA log. The libraries are the parts; the glue wires them per use.
-- **mseed/** — the seismo export. A NIC-Quake / NIC-Station seismograph stores
+- **mseed/** — the seismo export. A NIC-Quake / NIC-Heimdall seismograph stores
   to MLA; when you want the *international* seismology format, mseed turns that
   MLA log into miniSEED (ObsPy / SeisComp / FDSN). It exists for the seismo
   platform; that anyone else can reuse it is a bonus.
