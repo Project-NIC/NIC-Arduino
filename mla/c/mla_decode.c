@@ -12,13 +12,15 @@ void mla_field_parse(const uint8_t desc[MLA_FIELD_DESC_SIZE], mla_field_t *f) {
     f->exp10     = (int8_t)desc[2];
     f->is_signed = (uint8_t)(desc[3] & 0x01u);
     f->offset    = (int16_t)((uint16_t)desc[4] | ((uint16_t)desc[5] << 8));
-    memcpy(f->name, desc + 6, MLA_NAME_LEN);
+    f->mantissa  = (int16_t)((uint16_t)desc[6] | ((uint16_t)desc[7] << 8));
+    memcpy(f->name, desc + 8, MLA_NAME_LEN);
     f->name[MLA_NAME_LEN] = '\0';
 }
 
 double mla_decode_value(const mla_field_t *f, const uint8_t *raw) {
     int64_t v = 0;
     int     i, e;
+    int16_t mant;
     double  scaled, p;
 
     for (i = (int)f->width - 1; i >= 0; i--)
@@ -30,7 +32,8 @@ double mla_decode_value(const mla_field_t *f, const uint8_t *raw) {
             v -= ((int64_t)1 << bits);
     }
 
-    scaled = (double)(v + (int64_t)f->offset);
+    mant = f->mantissa ? f->mantissa : (int16_t)1;   // 0 ≡ 1 (exp10-only field)
+    scaled = (double)(v + (int64_t)f->offset) * (double)mant;
     e = f->exp10;
     p = 1.0;
     if (e > 0) { while (e-- > 0) p *= 10.0; return scaled * p; }

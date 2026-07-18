@@ -258,9 +258,10 @@ static int _uans_encode(const uint8_t *data, uint8_t len, uint8_t limit, uint8_t
     return total;
 }
 
-static int _uans_decode(const uint8_t *data, uint8_t data_len, uint8_t *out) {
+static int _uans_decode(const uint8_t *data, uint8_t data_len, uint8_t *out, uint8_t n_raw) {
     if (data_len < 3) return -1;
     uint8_t length = data[0];
+    if (length != n_raw) return -1;   /* guard: a crafted length must not overrun out[] (n_raw) */
     uint16_t state = (data[1] << 8) | data[2];
     uint8_t si = 3;
 
@@ -524,12 +525,9 @@ int dmd_decompress(dmd_decoder_t *dec, const uint8_t *input, uint16_t in_len, ui
     } else if (use_huf) {
         if (_huffman_decode(payload, payload_len, n_raw, work) < 0) return -1;
     } else if (use_ans) {
-        /* The ANS payload's first byte is the output count. Reject any packet
-           that does not declare exactly n_raw bytes — otherwise _uans_decode
-           writes payload[0] bytes into `work` (sized n_raw), an OOB write on a
-           crafted/corrupt packet. Mirrors the FLAG / FLAG+HUF guards below. */
-        if (payload_len < 1 || payload[0] != n_raw) return -1;
-        if (_uans_decode(payload, payload_len, work) < 0) return -1;
+        /* _uans_decode itself rejects a payload whose declared length is not
+           exactly n_raw — the OOB-write guard lives inside the decoder. */
+        if (_uans_decode(payload, payload_len, work, n_raw) < 0) return -1;
     } else if (use_flag) {
         if (payload_len == 0) return -1;
         uint8_t n = payload[0];

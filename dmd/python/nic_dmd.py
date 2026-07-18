@@ -467,8 +467,10 @@ def _uans_encode(data: bytes, limit: int) -> bytes | None:
     return bytes(result)
 
 
-def _uans_decode(data: bytes) -> bytes:
+def _uans_decode(data: bytes, n_raw: int) -> bytes:
     length     = data[0]                               # uint8_t
+    if length != n_raw:                                # guard: reject a crafted length (matches C)
+        raise ValueError("uANS decoded length != n_raw")
     state      = ((data[1] << 8) | data[2]) & 0xFFFF  # uint16_t
     si         = 3
     stream_end = len(data)
@@ -757,13 +759,12 @@ def dmd_decompress(data: bytes, previous: bytes) -> bytes:
     elif h['use_huf']:
         work = bytearray(_huffman_decode(payload, pkt_len))
     elif h['use_ans']:
-        # The ANS payload's first byte is the output count. Reject any packet
-        # that does not declare exactly pkt_len bytes — mirrors the C guard and
-        # the FLAG branches; without it a crafted packet yields a wrong-length
-        # row and poisons the stateful decoder's `previous`.
-        if len(payload) < 1 or payload[0] != pkt_len:
-            raise ValueError("DMD: ANS length byte does not match pkt_len")
-        work = bytearray(_uans_decode(payload))
+        # The ANS payload's first byte is the output count; _uans_decode
+        # rejects any packet that does not declare exactly pkt_len bytes
+        # (the OOB/poisoned-`previous` guard, checked inside the decoder).
+        if len(payload) < 1:
+            raise ValueError("DMD: empty ANS payload")
+        work = bytearray(_uans_decode(payload, pkt_len))
     elif h['use_flag']:
         work = bytearray(_flag_decode(payload))
     else:

@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-#define MLA_SCHEMA_TABLE_LEN 185u
+#define MLA_SCHEMA_TABLE_LEN 211u
 extern const uint8_t mla_schema_table[MLA_SCHEMA_TABLE_LEN];
 
 #endif /* MLA_SCHEMA_TABLE_H */
