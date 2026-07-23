@@ -4,7 +4,7 @@
 
 > ℹ️ **The data side of a DESIGN-STAGE concept.** These PC/data tools (MLA, DMD, mseed export,
 > glue, VDE) are real, host-tested software that runs today. The **instrument** they serve —
-> the N.I.C. sensor network (see NIC-Station) — is a **design-stage concept not yet built or
+> the N.I.C. sensor network (see [NIC-Heimdall](https://github.com/Project-NIC/NIC-Heimdall)) — is a **design-stage concept not yet built or
 > validated on hardware.** So: the format/tooling here works; the field hardware it's meant to
 > record does not exist yet.
 
