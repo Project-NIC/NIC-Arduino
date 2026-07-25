@@ -17,8 +17,8 @@
 > is the lingua franca of seismology, dropping straight into **ObsPy, SeisComp, SWARM**
 > and the FDSN toolchain. NIC-MSEED is the bridge — it reads a `.mla`, decompresses
 > NIC-DMD blobs, pulls the raw integer counts out per SCHEMA channel, and writes
-> standard miniSEED records. Whoever has a seismic MLA log (e.g. from **NIC-Quake** /
-> **NIC-Heimdall**) and needs SEED uses it — **a worked library, not a framework.** (For
+> standard miniSEED records. Whoever has a seismic MLA log (e.g. from **NIC-Quake**)
+> and needs SEED uses it — **a worked library, not a framework.** (For
 > ad-hoc CSV / SQLite inspection of any MLA log, use NIC-GLUE-OUT; miniSEED is the
 > seismo path.)
 

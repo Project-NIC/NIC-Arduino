@@ -1,7 +1,7 @@
 # Vendored: NIC-MLA (Python reference)
 
 Copy of the Python reference from
-[`Project-NIC/NIC-MLA`](https://github.com/Project-NIC/NIC-MLA) (`main`, format v1.1).
+[`mla/`](https://github.com/Project-NIC/NIC-Arduino/tree/main/mla) (`main`, format v1.1).
 
 Files:
 - `nic_mla.py` — container core (from repo root)

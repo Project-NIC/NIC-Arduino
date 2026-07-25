@@ -21,7 +21,7 @@
 > franca seismologie: zapadne rovnou do **ObsPy, SeisComp, SWARM** a celého FDSN
 > toolchainu. NIC-MSEED je ten most — přečte `.mla`, dekomprimuje NIC-DMD bloby,
 > vytáhne syrové celočíselné counts po SCHEMA kanálech a zapíše standardní miniSEED
-> záznamy. Kdo má seismický MLA log (např. z **NIC-Quake** / **NIC-Heimdall**) a
+> záznamy. Kdo má seismický MLA log (např. z **NIC-Quake**) a
 > potřebuje SEED, použije to — **funkční knihovna, ne framework.** (Na ad-hoc kontrolu
 > jakéhokoli MLA logu v CSV / SQLite slouží NIC-GLUE-OUT; miniSEED je seismo cesta.)
 

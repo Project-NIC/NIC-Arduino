@@ -4,7 +4,7 @@
 
 > ℹ️ **The data side of a DESIGN-STAGE concept.** These PC/data tools (MLA, DMD, mseed export,
 > glue, VDE) are real, host-tested software that runs today. The **instrument** they serve —
-> the N.I.C. sensor network (see [NIC-Heimdall](https://github.com/Project-NIC/NIC-Heimdall)) — is a **design-stage concept not yet built or
+> the N.I.C. sensor network — is a **design-stage concept not yet built or
 > validated on hardware.** So: the format/tooling here works; the field hardware it's meant to
 > record does not exist yet.
 
@@ -51,7 +51,7 @@ requirement:**
   Again optional.
 - **glue-in/ · glue-out/** — the glue that writes into and reads/exports out of
   an MLA log. The libraries are the parts; the glue wires them per use.
-- **mseed/** — the seismo export. A NIC-Quake / NIC-Heimdall seismograph stores
+- **mseed/** — the seismo export. A NIC-Quake seismograph stores
   to MLA; when you want the *international* seismology format, mseed turns that
   MLA log into miniSEED (ObsPy / SeisComp / FDSN). It exists for the seismo
   platform; that anyone else can reuse it is a bonus.

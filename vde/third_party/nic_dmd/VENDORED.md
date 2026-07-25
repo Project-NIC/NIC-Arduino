@@ -1,7 +1,7 @@
 # Vendored: NIC-DMD (Python reference)
 
 Copy of the Python reference from
-[`Project-NIC/NIC-DMD`](https://github.com/Project-NIC/NIC-DMD) (`main`).
+[`dmd/`](https://github.com/Project-NIC/NIC-Arduino/tree/main/dmd) (`main`).
 
 Files:
 - `nic_dmd.py` — adaptive lossless compressor: `DmdEncoder` / `DmdDecoder`

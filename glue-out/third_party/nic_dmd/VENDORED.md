@@ -1,7 +1,7 @@
 # Vendored: NIC-DMD (Python reference)
 
 Verbatim copy of the Python implementation from
-[`Project-NIC/NIC-DMD`](https://github.com/Project-NIC/NIC-DMD) (`main`).
+[`dmd/`](https://github.com/Project-NIC/NIC-Arduino/tree/main/dmd) (`main`).
 
 Files:
 - `nic_dmd.py` — from `python/nic_dmd.py`

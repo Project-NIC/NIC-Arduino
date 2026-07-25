@@ -4,7 +4,7 @@
 
 > ℹ️ **Datová strana KONCEPTU ve fázi návrhu.** Tyto PC/datové nástroje (MLA, DMD, mseed
 > export, glue, VDE) jsou skutečný, host-testovaný software, který běží už dnes. **Přístroj**,
-> kterému slouží — senzorová síť N.I.C. (viz [NIC-Heimdall](https://github.com/Project-NIC/NIC-Heimdall)) —
+> kterému slouží — senzorová síť N.I.C. —
 > je **koncept ve fázi návrhu, zatím nepostavený a neověřený na hardwaru.** Takže: formát a
 > nástroje zde fungují; terénní hardware, který mají zaznamenávat, zatím neexistuje.
 
@@ -53,7 +53,7 @@ Všechno ostatní je **volitelné, navrstvené nad MLA — bonus, ne podmínka:*
   volitelné.
 - **glue-in/ · glue-out/** — lepidlo, které zapisuje do MLA logu a čte/exportuje
   z něj. Knihovny jsou díly; lepidlo je propojuje podle použití.
-- **mseed/** — seismo export. Seismograf NIC-Quake / NIC-Heimdall ukládá do MLA;
+- **mseed/** — seismo export. Seismograf NIC-Quake ukládá do MLA;
   když chceš *mezinárodní* seismologický formát, mseed ten MLA log převede do
   miniSEED (ObsPy / SeisComp / FDSN). Vznikl pro seismo platformu; že to může
   použít i někdo jiný, je bonus.

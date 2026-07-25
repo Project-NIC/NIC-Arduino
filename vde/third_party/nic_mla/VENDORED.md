@@ -4,7 +4,7 @@ Vendored copy of the **NIC-MLA** Python reference — the single-file container
 format (Matroshka Logging Archive) that the data logger writes and that Volkov
 Data reads/browses.
 
-- **Origin:** [Project-NIC/NIC-MLA](https://github.com/Project-NIC/NIC-MLA).
+- **Origin:** [`mla/`](https://github.com/Project-NIC/NIC-Arduino/tree/main/mla).
 - **Vendored at:** upstream `main` (**library v1.2**, on-disk **format v1.1**).
 - **License:** MIT (see upstream / file headers).
 
