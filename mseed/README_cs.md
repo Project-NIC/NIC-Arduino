@@ -2,6 +2,8 @@
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
 
+*(Překlad může zaostávat za anglickým originálem — závazná je anglická verze.)*
+
 **Samostatná datová knihovna NIC — převod NIC-MLA logu do miniSEED (Steim-1 / Steim-2).**
 
 ---

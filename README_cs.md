@@ -2,9 +2,18 @@
 
 # NIC-Arduino — rodina NIC Arduino
 
+> ℹ️ **Datová strana KONCEPTU ve fázi návrhu.** Tyto PC/datové nástroje (MLA, DMD, mseed
+> export, glue, VDE) jsou skutečný, host-testovaný software, který běží už dnes. **Přístroj**,
+> kterému slouží — senzorová síť N.I.C. (viz [NIC-Heimdall](https://github.com/Project-NIC/NIC-Heimdall)) —
+> je **koncept ve fázi návrhu, zatím nepostavený a neověřený na hardwaru.** Takže: formát a
+> nástroje zde fungují; terénní hardware, který mají zaznamenávat, zatím neexistuje.
+
+
 **Datová strana NIC na jednom místě: formát logu MLA, jeho volitelné doplňky, lepidlo, seismo export a prohlížeč VDE.**
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
+
+*(Překlad může zaostávat za anglickým originálem — závazná je anglická verze.)*
 
 ---
 

@@ -6,6 +6,8 @@
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
 
+*(Překlad může zaostávat za anglickým originálem — závazná je anglická verze.)*
+
 
 Multiplatformní dvoupanelový souborový manažer ve stylu **Volkov Commanderu**,
 napsaný v Pythonu nad knihovnou **prompt_toolkit**. Prochází místní souborový

@@ -4,6 +4,8 @@
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
 
+*(Překlad může zaostávat za anglickým originálem — závazná je anglická verze.)*
+
 ★ N.I.C. ★
 
 # NIC DMD — Delta Markov Duda

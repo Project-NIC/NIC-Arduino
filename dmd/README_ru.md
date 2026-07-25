@@ -4,6 +4,8 @@
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
 
+*(Перевод может отставать от английского оригинала — авторитетной является английская версия.)*
+
 ★ N.I.C. ★
 
 # NIC DMD — Delta Markov Duda
