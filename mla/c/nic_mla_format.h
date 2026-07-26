@@ -83,7 +83,7 @@ static inline uint8_t mla_flags_kf_back(uint8_t flags)    { return (uint8_t)(fla
  *                  region/number/reserved record is gone.
  */
 #define MLA_SCHEMA_OFF    MLA_PFX_HDR_SIZE             /* 34 */
-#define MLA_SCHEMA_VER    2u                           /* stepped by the mantissa (universal scale) */
+#define MLA_SCHEMA_VER    1u                           /* schema table tag byte */
 #define MLA_FIELD_SIZE    16u                          /* 8 core + 8 name */
 #define MLA_STATION_VER   0x53u                        /* tag, distinct from schema ver */
 #define MLA_STA_NAME_LEN  32u                          /* human station name, UTF-8, NUL-padded */

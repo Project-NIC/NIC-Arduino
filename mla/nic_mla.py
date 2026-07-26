@@ -79,7 +79,7 @@ MLA_KF_MASK         = 0x7F
 # Self-describing tables embedded in the prefix free space, covered by the
 # prefix CRC. Built/read by tools/mla_schema.py (host-only).
 MLA_SCHEMA_OFF     = 34                # = end of the structured prefix header
-MLA_SCHEMA_VER     = 2                 # schema table version byte (stepped by the D50 mantissa)
+MLA_SCHEMA_VER     = 1                 # schema table tag byte
 MLA_SCHEMA_FIELD   = 16                # bytes per field descriptor (8 core + 8 name)
 MLA_STATION_VER    = 0x53              # station table tag (distinct from schema ver)
 MLA_STA_NAME_LEN   = 32                # bytes for the human station name (UTF-8, NUL-padded)
@@ -87,7 +87,7 @@ MLA_STATION_REC    = 8 + 2 + MLA_STA_NAME_LEN  # 42 — identity(8) + elev_m(i16
 
 
 # Datalogger (profile-ref) tables ride in the schema_table slot. Their tags are
-# distinct from the v1.2 schema tag, so _schema_byte_len can size either format
+# distinct from the schema tag, so _schema_byte_len can size either format
 # transparently — the core just carries the bytes (see tools/mla_datalogger.py).
 _DL_LOG_VER, _DL_PROF_VER, _DL_STA_VER, _DL_IDENT = 0x4C, 0x50, 0x54, 8
 

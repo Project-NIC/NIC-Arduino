@@ -51,7 +51,7 @@ static int count_cb(void *user, mla_t *m, const mla_log_t *rec) {
 /* An example schema + station table, byte-identical to what tools/mla_schema.py
  * would emit (one datetime log field, two data fields; two stations). */
 static const uint8_t SCHEMA[] = {
-    0x02, 0x01, 0x02,                                  /* ver=2, n_log=1, n_data=2 */
+    0x01, 0x01, 0x02,                                  /* tag=1, n_log=1, n_data=2 */
     /* datetime: width4 unit14(unix_s) exp0 flags0 off0 mant1 + "datetime" */
     0x04,0x0E,0x00,0x00,0x00,0x00, 0x01,0x00, 'd','a','t','e','t','i','m','e',
     /* temp: width2 unit1(degC) exp-1 flags1(signed) off0 mant1 + "temp\0\0\0\0" */

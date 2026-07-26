@@ -46,7 +46,7 @@ now uses — this **unifies** the station identity on the 8-byte model (the old
 
 The 14-byte field descriptor and `physical = (raw + offset) × 10^exp10` are the
 **same** as v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).
-The tags (0x4C/0x50/0x54) differ from the v1.2 schema tag (0x01) so the core
+The tags (0x4C/0x50/0x54) differ from the schema tag (0x01) so the core
 (`_schema_byte_len` in `nic_mla.py`) sizes either format transparently — `MlaCore`
 just carries the bytes.
 

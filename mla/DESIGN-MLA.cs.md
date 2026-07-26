@@ -168,13 +168,14 @@ Staví/čte ji `tools/mla_schema.py`. Umožní libovolné čtečce export do CSV
 **bez předchozí znalosti** — stanice nese vlastní popis sloupců.
 
 ```
-[0] tbl_ver  1 B  = 1
+[0] tbl_ver  1 B  = 1 (MLA_SCHEMA_VER)
 [1] n_log    1 B  počet LOG polí (popisují timestamp atd.)
 [2] n_data   1 B  počet DATA polí (sloupce napakovaného payloadu)
-[3 ..]       (n_log + n_data) × 14 B deskriptorů pole:
+[3 ..]       (n_log + n_data) × 16 B deskriptorů pole:
    width 1 B · unit 1 B · exp10 1 B (i8) · flags 1 B (bit0=signed) ·
-   offset 2 B (i16 LE) · name 8 B (UTF-8, doplněno NUL)
-   fyzikální = (raw + offset) × 10^exp10
+   offset 2 B (i16 LE) · mantissa 2 B (i16 LE, čitatel uživatelské škály, 0 ≡ 1) ·
+   name 8 B (UTF-8, doplněno NUL)
+   fyzikální = (raw + offset) × mantissa × 10^exp10
 ```
 
 Slovník jednotek je univerzální (sdílí ho spec); jen *složení* polí (které

@@ -168,13 +168,14 @@ Built/read by `tools/mla_schema.py`. Lets any reader export records to CSV/SQL
 with **no prior knowledge** — the station carries its own column descriptions.
 
 ```
-[0] tbl_ver  1 B  = 1
+[0] tbl_ver  1 B  = 1 (MLA_SCHEMA_VER)
 [1] n_log    1 B  number of LOG fields (describe the timestamp etc.)
 [2] n_data   1 B  number of DATA fields (the packed payload columns)
-[3 ..]       (n_log + n_data) × 14 B field descriptors:
+[3 ..]       (n_log + n_data) × 16 B field descriptors:
    width 1 B · unit 1 B · exp10 1 B (i8) · flags 1 B (bit0=signed) ·
-   offset 2 B (i16 LE) · name 8 B (UTF-8, NUL-padded)
-   physical = (raw + offset) × 10^exp10
+   offset 2 B (i16 LE) · mantissa 2 B (i16 LE, user scale numerator, 0 ≡ 1) ·
+   name 8 B (UTF-8, NUL-padded)
+   physical = (raw + offset) × mantissa × 10^exp10
 ```
 
 The unit vocabulary is universal (spec-wide); only the field *composition*

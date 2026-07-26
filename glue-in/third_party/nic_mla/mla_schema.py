@@ -27,7 +27,7 @@ and they stay self-describing:
     ADXL355's 3.831e-5 m/s²/count (mantissa 3831, exp10 -8) were unreachable. mantissa
     0 reads as 1, so an exp10-only field is unchanged.
 
-Table binary layout (contract version MLA_SCHEMA_VER = 2):
+Table binary layout (tag byte MLA_SCHEMA_VER = 1):
 
     [0] tbl_ver  1 B   = 2
     [1] n_log    1 B   number of LOG fields
@@ -65,7 +65,7 @@ import struct
 from dataclasses import dataclass
 
 # ── Format constants (mirror nic_mla.py / nic_mla_format.h) ─────────────────
-MLA_SCHEMA_VER  = 2                       # schema-table contract version (independent
+MLA_SCHEMA_VER  = 1                       # schema-table tag byte (independent
                                           # of the MLA file format version). v2 added the
                                           # per-field `mantissa` (universal user scale, D50).
 MLA_SCHEMA_OFF  = 34                      # = MLA_PFX_HDR_SIZE
