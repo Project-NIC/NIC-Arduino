@@ -19,8 +19,8 @@ machinery from mla_schema.py and does NOT touch the v1.2 single-schema format.
 Tables binary layout (after the 34 B prefix header; each section is tagged and
 self-sizing, so a reader walks them in order):
 
-    LOG       : DL_LOG_VER(1) n_log(1)   n_log × 14 B
-    PROFILES  : DL_PROF_VER(1) n_prof(1)  [ n_data(1) n_data × 14 B ] × n_prof
+    LOG       : DL_LOG_VER(1) n_log(1)   n_log × 16 B
+    PROFILES  : DL_PROF_VER(1) n_prof(1)  [ n_data(1) n_data × 16 B ] × n_prof
     STATIONS  : DL_STA_VER(1) n_sta(1)    [ identity(8 B) profile_ref(1 B)
                                             elev(2 B) name(32 B) ] × n_sta
 

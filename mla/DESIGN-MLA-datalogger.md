@@ -30,8 +30,8 @@ Each section is tagged and self-sizing; a reader walks them in order. The whole
 blob is covered by the prefix CRC, exactly like the v1.2 schema table.
 
 ```
-LOG       : 0x4C  n_log         n_log × 14B descriptor      (describes the fixed 16B record)
-PROFILES  : 0x50  n_profiles    [ n_data(1B)  n_data × 14B ] × n_profiles
+LOG       : 0x4C  n_log         n_log × 16B descriptor      (describes the fixed 16B record)
+PROFILES  : 0x50  n_profiles    [ n_data(1B)  n_data × 16B ] × n_profiles
 STATIONS  : 0x54  n_stations    [ identity(8B)  profile_ref(1B)  elevation(2B)  name(32B) ] × n_stations
 ```
 
@@ -44,8 +44,8 @@ it is **prefix-once** metadata, NOT carried in each 16-byte log record. The
 now uses — this **unifies** the station identity on the 8-byte model (the old
 6-byte region/number/reserved record is retired).
 
-The 14-byte field descriptor and `physical = (raw + offset) × 10^exp10` are the
-**same** as v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).
+The 16-byte field descriptor and `physical = (raw + offset) × mantissa × 10^exp10` are the
+**same** as the main format (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · mantissa i16 · name 8B`).
 The tags (0x4C/0x50/0x54) differ from the schema tag (0x01) so the core
 (`_schema_byte_len` in `nic_mla.py`) sizes either format transparently — `MlaCore`
 just carries the bytes.

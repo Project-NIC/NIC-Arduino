@@ -593,7 +593,7 @@ def test_extended_prefix():
     section("Extended prefix — tables overflow 512 B, CRC moves")
     sb = MlaSchemaBuilder()
     sb.log("datetime")
-    for i in range(60):                     # 60 × 14 B ≈ 840 B schema
+    for i in range(60):                     # 60 × 16 B ≈ 960 B schema
         sb.data(f"s{i:02d}", unit="raw", width=1)
     schema = sb.table()
     st = MlaStationTable()
@@ -632,7 +632,7 @@ def test_extended_prefix():
             huge.data(f"d{i:03d}", unit="raw", width=1)
         MlaPrefix(file_size=_SZ, schema_table=huge.table(),
                   station_table=MlaStationTable().station(dl_ident(number=1)).table())
-        # 255 × 14 ≈ 3.6 KB → 8 sectors, fine; force the ceiling explicitly:
+        # 255 × 16 ≈ 4 KB → 8 sectors, fine; force the ceiling explicitly:
         prefix_byte_len_check = MLA_MAX_PREFIX_SEC * 512 + 1
         from nic_mla import _prefix_byte_len
         _prefix_byte_len(prefix_byte_len_check, 0)

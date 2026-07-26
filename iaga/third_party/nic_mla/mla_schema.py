@@ -283,7 +283,7 @@ def mla_read_schema(prefix: bytes) -> tuple[list[MlaField] | None, list[MlaField
     """Decode the schema table from a prefix (512 B, or larger if extended).
 
     Reads from offset MLA_SCHEMA_OFF (34):
-        [34] tbl_ver  [35] n_log  [36] n_data  [37 ..] (n_log+n_data) × 14 B
+        [34] tbl_ver  [35] n_log  [36] n_data  [37 ..] (n_log+n_data) × 16 B
 
     Returns (log_fields, data_fields). A file written without a schema
     (tbl_ver byte 0x00 or 0xFF — zero padding or fresh 0xFF) yields

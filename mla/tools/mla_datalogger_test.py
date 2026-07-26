@@ -98,8 +98,8 @@ check("name s1 → 'Praha meteo'", t.name_for(1) == "Praha meteo")
 check("name s2 → multibyte 'Libuš' round-trips", t.name_for(2) == "Libuš")
 check("name s3 → '' (unset)", t.name_for(3) == "")
 check("station record stride is 43 B (8 id + 1 ref + 2 elev + 32 name)",
-      len(b.serialize()) == 2 + len(b.log_fields) * 14          # LOG tag + n + fields
-      + 2 + sum(1 + len(p) * 14 for p in b.profiles)            # PROF tag + n + profiles
+      len(b.serialize()) == 2 + len(b.log_fields) * 16          # LOG tag + n + fields
+      + 2 + sum(1 + len(p) * 16 for p in b.profiles)            # PROF tag + n + profiles
       + 2 + 3 * 43)                                              # STA tag + n + 3 × 43 B
 try:
     b.station(dl_gps(0, 0), meteo, name="y" * 33)

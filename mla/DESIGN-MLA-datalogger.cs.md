@@ -30,8 +30,8 @@ Každá sekce je otagovaná a sebe-měřitelná; čtečka je projde po pořadí.
 je krytý CRC prefixu, přesně jako v1.2 schema tabulka.
 
 ```
-LOG       : 0x4C  n_log         n_log × 14B descriptor      (popisuje pevný 16B paket)
-PROFILY   : 0x50  n_profilů     [ n_data(1B)  n_data × 14B ] × n_profilů
+LOG       : 0x4C  n_log         n_log × 16B descriptor      (popisuje pevný 16B paket)
+PROFILY   : 0x50  n_profilů     [ n_data(1B)  n_data × 16B ] × n_profilů
 STANICE   : 0x54  n_stanic      [ identita(8B)  odkaz(1B)  nadm. výška(2B)  název(32B) ] × n_stanic
 ```
 
@@ -44,8 +44,8 @@ doplněné NUL, samé nuly = žádný) na konci — materiál pro StationXML
 teď používá i jednoschématový formát — tím se identita stanice **sjednocuje** na
 8bajtovém modelu (starý 6bajtový záznam region/number/reserved je zrušen).
 
-14bajtový descriptor pole a `fyzikální = (raw + offset) × 10^exp10` jsou **stejné**
-jako ve v1.2 (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · name 8B`).
+16bajtový descriptor pole a `fyzikální = (raw + offset) × mantissa × 10^exp10` jsou **stejné**
+jako v hlavním formátu (`width 1/2/4 · unit · exp10 i8 · flags · offset i16 · mantissa i16 · name 8B`).
 Tagy (0x4C/0x50/0x54) se liší od v1.2 schema tagu (0x01), takže jádro
 (`_schema_byte_len` v `nic_mla.py`, resp. `mla_datalogger_size` v `nic_mla.c`)
 spočítá délku obou formátů — `MlaCore` jen veze bajty.
