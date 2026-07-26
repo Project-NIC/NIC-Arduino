@@ -175,6 +175,124 @@ int main(int argc, char **argv) {
         free(r.mem);
     }
 
+    /* 3b. D48 layer 1 — crash-recovery scan/truncate at the LOG boundary */
+    section("D48 layer 1: torn boundary slot neutralised on mount");
+    {
+        ram_t r; mla_hal_t hal = ram_hal(&r, 8 * 1024);
+        mla_t m, m2, m3; int i;
+        uint32_t lt, slot_addr;
+        uint8_t torn[MLA_LOG_REC_SIZE]; mla_log_t lk;
+        static const uint8_t Z16[MLA_LOG_REC_SIZE] = {0};
+        mla_format(&m, hal, 8 * 1024, MLA_CRC_FULL, 12, 0);
+        for (i = 0; i < 3; i++) {
+            uint8_t d[5]; memset(d, i, sizeof(d));
+            mla_append(&m, 1700000000u + (uint32_t)i, 0, (uint8_t)(1 + i), d, 5, 0, 0);
+        }
+        lt = m.region_end;
+        /* Torn 0xFF-partial lock: only the first 9 B of a real lock landed,
+         * the rest of the 16 B slot is still 0xFF (power cut mid-write). */
+        lk.offset = m.top_ptr; lk.timestamp = 1700000099u; lk.subsec = 0;
+        lk.length = 8; lk.flags = 0; lk.station = 9;
+        mla_log_build(torn, &lk);
+        hal.write(hal.ctx, lt - 4u * MLA_LOG_REC_SIZE, torn, 9);
+        slot_addr = lt - 4u * MLA_LOG_REC_SIZE;
+
+        check("mount OK with torn boundary slot", mla_mount(&m2, hal) == MLA_OK);
+        check("torn record gone (count=3)", m2.count == 3);
+        check("torn slot zeroed", memcmp(r.mem + slot_addr, Z16, MLA_LOG_REC_SIZE) == 0);
+        { mla_log_t rec; uint8_t buf[8]; uint16_t len;
+          check("earlier records intact",
+                mla_read_record(&m2, 2, &rec, buf, sizeof(buf), &len) == MLA_OK
+                && len == 5 && buf[0] == 2 && rec.station == 3); }
+        /* Appending continues correctly below the neutralised slot. */
+        { uint8_t d[4] = {0xDE,0xAD,0xBE,0xEF};
+          check("append after recovery OK",
+                mla_append(&m2, 1700000100u, 0, 7, d, 4, 0, 0) == MLA_OK); }
+        check("remount sees 4 records", mla_mount(&m3, hal) == MLA_OK && m3.count == 4);
+        free(r.mem);
+    }
+
+    section("D48 layer 1: bad-CRC boundary slots zeroed, mount idempotent");
+    {
+        ram_t r; mla_hal_t hal = ram_hal(&r, 8 * 1024);
+        mla_t m, m2, m3;
+        uint32_t lt;
+        uint8_t junk[MLA_LOG_REC_SIZE], *snap;
+        static const uint8_t Z16[MLA_LOG_REC_SIZE] = {0};
+        mla_format(&m, hal, 8 * 1024, MLA_CRC_FULL, 12, 0);
+        { uint8_t d[3] = {1,2,3}; mla_append(&m, 1700000000u, 0, 1, d, 3, 0, 0); }
+        lt = m.region_end;
+        /* Two consecutive garbage slots at the boundary — the trailing-run
+         * walk must zero BOTH (defensive vs. buffered/reordering media). */
+        memset(junk, 0x11, sizeof(junk));
+        hal.write(hal.ctx, lt - 2u * MLA_LOG_REC_SIZE, junk, MLA_LOG_REC_SIZE);
+        memset(junk, 0x5A, sizeof(junk));
+        hal.write(hal.ctx, lt - 3u * MLA_LOG_REC_SIZE, junk, MLA_LOG_REC_SIZE);
+
+        check("mount OK", mla_mount(&m2, hal) == MLA_OK);
+        check("1 good record survives", m2.count == 1);
+        check("both garbage slots zeroed",
+              memcmp(r.mem + lt - 2u * MLA_LOG_REC_SIZE, Z16, MLA_LOG_REC_SIZE) == 0
+              && memcmp(r.mem + lt - 3u * MLA_LOG_REC_SIZE, Z16, MLA_LOG_REC_SIZE) == 0);
+        /* Idempotent: a second mount is a pure read — no byte changes. */
+        snap = (uint8_t*)malloc(r.size); memcpy(snap, r.mem, r.size);
+        check("remount OK", mla_mount(&m3, hal) == MLA_OK && m3.count == 1);
+        check("remount changes nothing", memcmp(snap, r.mem, r.size) == 0);
+        free(snap); free(r.mem);
+    }
+
+    section("D48 layer 1: MAGIC landed but data torn (bad data CRC)");
+    {
+        ram_t r; mla_hal_t hal = ram_hal(&r, 8 * 1024);
+        mla_t m, m2;
+        uint32_t top;
+        uint8_t lb[MLA_LOG_REC_SIZE]; mla_log_t lk;
+        static const uint8_t Z16[MLA_LOG_REC_SIZE] = {0};
+        mla_format(&m, hal, 8 * 1024, MLA_CRC_FULL, 12, 0);
+        { uint8_t d[4] = {0x11,0x22,0x33,0x44}; mla_append(&m, 1700000000u, 0, 1, d, 4, 0, 0); }
+        top = m.top_ptr;
+        /* Committed lock whose DATA write tore mid-payload: the 2 B MAGIC
+         * landed, then only part of the payload — no valid data CRC. */
+        lk.offset = top; lk.timestamp = 1700000001u; lk.subsec = 0;
+        lk.length = 6; lk.flags = 0; lk.station = 2;
+        mla_log_build(lb, &lk);
+        hal.write(hal.ctx, m.bot_ptr - MLA_LOG_REC_SIZE, lb, MLA_LOG_REC_SIZE);
+        { uint8_t part[5] = {MLA_DATA_MAGIC0, MLA_DATA_MAGIC1, 0xAB, 0xCD, 0xEF};
+          hal.write(hal.ctx, top, part, sizeof(part)); }   /* torn after 3 of 6 B */
+
+        check("mount OK", mla_mount(&m2, hal) == MLA_OK);
+        check("torn-data record discarded (count=1)", m2.count == 1);
+        check("its lock zeroed",
+              memcmp(r.mem + m2.region_end - 2u * MLA_LOG_REC_SIZE, Z16,
+                     MLA_LOG_REC_SIZE) == 0);
+        check("top_ptr reclaimed to the torn block", m2.top_ptr == top);
+        free(r.mem);
+    }
+
+    section("D48 layer 1: clean + FULL files remount byte-identical");
+    {
+        ram_t r; mla_hal_t hal = ram_hal(&r, 2 * 1024);
+        mla_t m, m2; int i, rc = MLA_OK;
+        uint8_t *snap;
+        mla_format(&m, hal, 2 * 1024, MLA_CRC_FULL, 12, 0);
+        /* Clean, partially filled file: mount must not write a single byte. */
+        for (i = 0; i < 3; i++) { uint8_t d[7]; memset(d, i, sizeof(d));
+                                  mla_append(&m, 1700000000u + (uint32_t)i, 0, 1, d, 7, 0, 0); }
+        snap = (uint8_t*)malloc(r.size); memcpy(snap, r.mem, r.size);
+        check("clean mount OK", mla_mount(&m2, hal) == MLA_OK && m2.count == 3);
+        check("clean file untouched by mount", memcmp(snap, r.mem, r.size) == 0);
+        /* Fill until FULL — the log meets the data, the 0xFF search overruns
+         * into payload bytes; the top_ptr guard must keep them unwritten. */
+        while (rc == MLA_OK) { uint8_t d[7]; memset(d, 0x77, sizeof(d));
+                               rc = mla_append(&m2, 1700001000u, 0, 1, d, 7, 0, 0); }
+        check("file reports FULL", rc == MLA_E_FULL);
+        memcpy(snap, r.mem, r.size);
+        { mla_t mf; uint32_t want = m2.count;
+          check("full-file mount OK", mla_mount(&mf, hal) == MLA_OK && mf.count == want); }
+        check("full file untouched by mount", memcmp(snap, r.mem, r.size) == 0);
+        free(snap); free(r.mem);
+    }
+
     /* 4. recover() */
     section("Emergency recovery — recover()");
     {

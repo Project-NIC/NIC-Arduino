@@ -585,8 +585,13 @@ class MlaCore:
           1. Read and verify the prefix.
           2. Binary-search the log boundary (the 0xFF ↔ written transition).
           3. Forward-scan the slots; the end of the newest valid record's data
-             is top_ptr. If the newest lock's data block has no MAGIC (torn data
-             write), zero that lock and reclaim its space.
+             is top_ptr. If the newest lock's data block is torn (no MAGIC, or
+             a bad data CRC when the file carries data CRCs), zero that lock
+             and reclaim its space.
+          4. Crash-recovery scan/truncate (D48 layer 1): neutralise (zero) any
+             torn LOG slot at the boundary — bytes that are neither a valid
+             CRC'd record nor all-0xFF (nor already all-0x00, the documented
+             discard convention). Appending then continues below it.
         """
         self._prefix = self._read_prefix()
         rs = self._prefix.log_rec_size
@@ -613,15 +618,64 @@ class MlaCore:
             if not ok:
                 continue                              # burned slot (torn lock / dead)
             if slot == lo - 1:                        # newest — check the data block
-                if self._hal.read(rec.offset, 2) != MLA_DATA_MAGIC:
+                if self._data_torn(rec):
                     self._hal.write(addr, b"\x00" * rs)   # torn data → abandon
                     self._hal.sync()
                     top_ptr = rec.offset
                     continue
             top_ptr = rec.block_end
             count  += 1
+
+        # D48 layer 1 — crash-recovery scan/truncate at the LOG boundary.
+        # Append is LOG-lock-first / DATA-second with strictly ordered writes,
+        # so a power cut can tear AT MOST ONE lock — the newest slot (a torn
+        # 16 B write: partial bytes, the rest still 0xFF). Walking the trailing
+        # run of CRC-invalid slots newest→oldest is defensive against buffered
+        # or reordering media and stops at the first valid record, so the work
+        # stays bounded near the boundary. Torn slots are neutralised by
+        # zeroing (a zeroed record's CRC never matches → every reader skips
+        # it); already-zeroed (abandoned) slots are left untouched, which makes
+        # the pass idempotent — a clean file is never written to.
+        # Runs AFTER the forward scan because top_ptr is the guard: in a FULL
+        # file the 0xFF binary search overruns into the data region (data
+        # bytes are not 0xFF), so trailing "slots" below top_ptr are really
+        # payload bytes and must never be written; only invalid slots at or
+        # above top_ptr are genuine log territory. A torn DATA block, in turn,
+        # implies its lock committed first — that is the newest-slot
+        # _data_torn() check above.
+        zeroed = False
+        for slot in range(lo - 1, -1, -1):
+            addr = lt - (slot + 1) * rs
+            raw  = self._hal.read(addr, rs)
+            if MlaLog.from_bytes(raw)[1]:
+                break                              # first valid record — clean
+            # Torn = neither a valid record, nor all-0xFF (free / the residual
+            # gap of a full file), nor all-0x00 (already discarded).
+            if (addr >= top_ptr and raw != b"\x00" * rs
+                    and raw != b"\xff" * rs):      # torn slot → neutralise
+                self._hal.write(addr, b"\x00" * rs)
+                zeroed = True
+        if zeroed:
+            self._hal.sync()
+
         self._top_ptr = top_ptr
         self._count   = count
+
+    def _data_torn(self, rec: MlaLog) -> bool:
+        """True if `rec`'s data block is torn: MAGIC missing (data write never
+        started) or, when the file carries data CRCs, a bad data CRC (the write
+        tore after the MAGIC). Applied only to the newest record on mount —
+        with LOG-first/DATA-second ordered writes, only it can be torn."""
+        if self._hal.read(rec.offset, 2) != MLA_DATA_MAGIC:
+            return True
+        if self._prefix.flags & 0x3 >= MLA_CRC_DATA:
+            blk = self._hal.read(rec.offset + 2, rec.length + 2)
+            if len(blk) < rec.length + 2:
+                return True
+            crc_s = struct.unpack_from("<H", blk, rec.length)[0]
+            if mla_crc16(blk[:rec.length]) != crc_s:
+                return True
+        return False
 
     # ── Write ──────────────────────────────────────────────────────────────────
 

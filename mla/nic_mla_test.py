@@ -10,6 +10,8 @@ Covers:
   • Torn lock write  (bad-CRC lock — skipped)
   • Torn data write  (lock OK, data MAGIC missing — zeroed on mount)
   • Abandon-by-zeroing (a zeroed record fails the CRC and is skipped)
+  • D48 layer 1 crash-recovery scan/truncate (torn boundary slot → zeroed on
+    mount; torn data CRC → lock zeroed; mount idempotent on clean files)
   • Emergency recovery (recover())
   • File rotation + host-side mla_query (MlaArchive)
   • Self-describing SCHEMA table (names/units → CSV/SQL) round-trip
@@ -273,6 +275,126 @@ def test_abandon_by_zeroing():
         datas = [d for _, d in m2]
         check("zeroed record skipped", b"drop" not in datas)
         check("surviving records intact", datas == [b"keep", b"keep2"])
+
+
+def _file_bytes() -> bytes:
+    with open(_TMP, "rb") as f:
+        return f.read()
+
+
+def test_boundary_torn_partial_ff():
+    section("D48 layer 1 — torn 0xFF-partial boundary lock → neutralised")
+    payloads = [b"one", b"two2", b"three"]
+    rs = MLA_LOG_REC_SIZE
+    with fresh_posix() as hal:
+        mla = MlaCore(hal); mla.format(file_size=_SZ)
+        for i, p in enumerate(payloads):
+            mla.append(1700000000 + i, station=1 + i, data=p)
+        lt = mla._prefix.region_end
+        # Simulate a torn lock write: the first 9 bytes of a real lock landed,
+        # the rest of the 16 B slot is still 0xFF (power cut mid-write).
+        torn = MlaLog(offset=mla._top_ptr, timestamp=1700000099,
+                      length=8, station=9).to_bytes()
+        hal.write(lt - 4 * rs, torn[:9])
+        hal.sync()
+    before = _file_bytes()
+    with MlaPosixHAL(_TMP) as hal:
+        m2 = MlaCore(hal); m2.mount()
+        lt = m2._prefix.region_end
+        check("file mounts, torn record gone", m2.record_count == 3)
+        check("torn slot zeroed", hal.read(lt - 4 * rs, rs) == bytes(rs))
+        check("earlier records intact", [d for _, d in m2] == payloads)
+        # ONLY the torn slot changed — every other byte is untouched.
+        after = _file_bytes()
+        s = lt - 4 * rs
+        check("only the 16 B slot rewritten",
+              after[:s] == before[:s] and after[s + rs:] == before[s + rs:]
+              and after[s:s + rs] == bytes(rs))
+        # Appending continues correctly below the neutralised slot.
+        m2.append(1700000100, station=7, data=b"after")
+        m2.sync()
+    with MlaPosixHAL(_TMP) as hal:
+        m3 = MlaCore(hal); m3.mount()
+        check("append after recovery survives remount",
+              m3.record_count == 4 and [d for _, d in m3] == payloads + [b"after"])
+
+
+def test_boundary_bad_crc_slot():
+    section("D48 layer 1 — bad-CRC boundary slot(s) → zeroed on mount")
+    rs = MLA_LOG_REC_SIZE
+    with fresh_posix() as hal:
+        mla = MlaCore(hal); mla.format(file_size=_SZ)
+        mla.append(1700000000, station=1, data=b"\x01\x02\x03")
+        lt = mla._prefix.region_end
+        # Two consecutive garbage slots at the boundary (full 16 B of noise,
+        # CRC cannot match) — the trailing-run walk must zero BOTH.
+        hal.write(lt - 2 * rs, bytes([0x11] * rs))
+        hal.write(lt - 3 * rs, bytes([0x5A] * rs))
+        hal.sync()
+    with MlaPosixHAL(_TMP) as hal:
+        m2 = MlaCore(hal); m2.mount()
+        lt = m2._prefix.region_end
+        check("mounts with 1 good record", m2.record_count == 1)
+        check("both garbage slots zeroed",
+              hal.read(lt - 2 * rs, rs) == bytes(rs)
+              and hal.read(lt - 3 * rs, rs) == bytes(rs))
+        check("good record intact", list(m2)[0][1] == b"\x01\x02\x03")
+        m2.append(1700000001, station=2, data=b"next")
+        m2.sync()
+    with MlaPosixHAL(_TMP) as hal:
+        m3 = MlaCore(hal); m3.mount()
+        check("appending continues past the dead slots",
+              m3.record_count == 2 and [d for _, d in m3] == [b"\x01\x02\x03", b"next"])
+
+
+def test_boundary_torn_data_crc():
+    section("D48 layer 1 — MAGIC landed but data torn (bad data CRC) → zeroed")
+    rs = MLA_LOG_REC_SIZE
+    with fresh_posix() as hal:
+        mla = MlaCore(hal); mla.format(file_size=_SZ, crc_mode=MLA_CRC_FULL)
+        mla.append(1700000000, station=1, data=b"keep")
+        top = mla._top_ptr
+        # Hand-craft a committed lock whose DATA write tore mid-payload: the
+        # 2 B MAGIC landed, then only part of the payload — no valid data CRC.
+        lock = MlaLog(offset=top, timestamp=1700000001, length=6, station=2)
+        hal.write(mla._bot_ptr - rs, lock.to_bytes())
+        hal.write(top, MLA_DATA_MAGIC + b"\xab\xcd\xef")   # torn after 3 of 6 B
+        hal.sync()
+    with MlaPosixHAL(_TMP) as hal:
+        m2 = MlaCore(hal); m2.mount()
+        check("torn-data record discarded", m2.record_count == 1)
+        slot = hal.read(m2._prefix.region_end - 2 * rs, rs)
+        check("its lock zeroed", slot == bytes(rs))
+        check("top_ptr reclaimed to the torn block", m2._top_ptr == top)
+        check("earlier record intact", list(m2)[0][1] == b"keep")
+
+
+def test_mount_idempotent():
+    section("D48 layer 1 — mount is idempotent (clean/recovered files untouched)")
+    rs = MLA_LOG_REC_SIZE
+    with fresh_posix() as hal:
+        mla = MlaCore(hal); mla.format(file_size=_SZ)
+        for i in range(3):
+            mla.append(1700000000 + i, station=1, data=bytes([i] * 5))
+        mla.sync()
+    clean = _file_bytes()
+    with MlaPosixHAL(_TMP) as hal:
+        m2 = MlaCore(hal); m2.mount()
+        check("clean file: mount changes nothing", _file_bytes() == clean)
+    # A file that already went through recovery (newest slot zeroed) must
+    # remount without further writes.
+    with MlaPosixHAL(_TMP) as hal:
+        m = MlaCore(hal); m.mount()
+        hal.write(m._prefix.region_end - 4 * rs, bytes([0x77] * 7))  # torn 0xFF-partial
+        hal.sync()
+    with MlaPosixHAL(_TMP) as hal:
+        m2 = MlaCore(hal); m2.mount()   # first mount neutralises
+        check("torn slot neutralised", m2.record_count == 3)
+    recovered = _file_bytes()
+    with MlaPosixHAL(_TMP) as hal:
+        m3 = MlaCore(hal); m3.mount()   # second mount must be a pure read
+        check("recovered file: remount changes nothing",
+              _file_bytes() == recovered and m3.record_count == 3)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -659,6 +781,10 @@ if __name__ == "__main__":
         test_torn_lock()
         test_torn_data()
         test_abandon_by_zeroing()
+        test_boundary_torn_partial_ff()
+        test_boundary_bad_crc_slot()
+        test_boundary_torn_data_crc()
+        test_mount_idempotent()
         test_recovery()
         test_rotation_and_query()
         test_rotation_inherits_tables()

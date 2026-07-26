@@ -204,6 +204,29 @@ int mla_format(mla_t *m, mla_hal_t hal,
 }
 
 /* ── mount ──────────────────────────────────────────────────────────────── */
+/* True if `rec`'s data block is torn: MAGIC missing (data write never started)
+ * or, when the file carries data CRCs, a bad data CRC (the write tore after
+ * the MAGIC). Applied only to the newest record on mount — with the LOG-first
+ * / DATA-second ordered writes, only it can be torn. A failed HAL read counts
+ * as torn (the lock then gets neutralised, which is the safe direction). */
+static int data_torn(mla_t *m, const mla_log_t *rec) {
+    uint8_t mb[2], crcb[2], chunk[64];
+    uint16_t crc = 0xFFFFu;
+    uint32_t rd, remaining;
+    if (m->hal.read(m->hal.ctx, rec->offset, mb, 2) != 0) return 1;
+    if (mb[0] != MLA_DATA_MAGIC0 || mb[1] != MLA_DATA_MAGIC1) return 1;
+    if ((m->flags & 0x3) < MLA_CRC_DATA) return 0;
+    rd = rec->offset + 2u; remaining = rec->length;
+    while (remaining) {
+        uint16_t n = remaining < sizeof(chunk) ? (uint16_t)remaining : (uint16_t)sizeof(chunk);
+        if (m->hal.read(m->hal.ctx, rd, chunk, n) != 0) return 1;
+        crc = mla_crc16_ex(crc, chunk, n);
+        rd += n; remaining -= n;
+    }
+    if (m->hal.read(m->hal.ctx, rec->offset + 2u + rec->length, crcb, 2) != 0) return 1;
+    return crc != mla_get_u16(crcb);
+}
+
 int mla_mount(mla_t *m, mla_hal_t hal) {
     mla_prefix_t p;
     uint32_t lt, lo, hi, mid, max_slots, slot, top, count, psize;
@@ -246,9 +269,7 @@ int mla_mount(mla_t *m, mla_hal_t hal) {
         if (m->hal.read(m->hal.ctx, addr, rec_buf, rs) != 0) return MLA_E_IO;
         if (!mla_log_parse(rec_buf, &rec)) continue;
         if (slot == lo - 1) {
-            uint8_t magic[2];
-            if (m->hal.read(m->hal.ctx, rec.offset, magic, 2) != 0) return MLA_E_IO;
-            if (magic[0] != MLA_DATA_MAGIC0 || magic[1] != MLA_DATA_MAGIC1) {
+            if (data_torn(m, &rec)) {
                 uint8_t z[MLA_LOG_REC_SIZE]; memset(z, 0, rs);
                 if (m->hal.write(m->hal.ctx, addr, z, rs) != 0) return MLA_E_IO;
                 m->hal.sync(m->hal.ctx);
@@ -259,6 +280,44 @@ int mla_mount(mla_t *m, mla_hal_t hal) {
         top = mla_log_block_end(&rec);
         count++;
     }
+
+    /* D48 layer 1 — crash-recovery scan/truncate at the LOG boundary.
+     * Append is LOG-lock-first / DATA-second with strictly ordered writes, so
+     * a power cut can tear AT MOST ONE lock — the newest slot (a torn 16 B
+     * write: partial bytes, the rest still 0xFF). Walking the trailing run of
+     * CRC-invalid slots newest→oldest is defensive against buffered or
+     * reordering media and stops at the first valid record, so the work stays
+     * bounded near the boundary. Torn slots are neutralised by zeroing (a
+     * zeroed record's CRC never matches → every reader skips it);
+     * already-zeroed (abandoned) slots are left untouched, which makes the
+     * pass idempotent — a clean file is never written to.
+     * Runs AFTER the forward scan because top_ptr is the guard: in a FULL
+     * file the 0xFF binary search overruns into the data region (data bytes
+     * are not 0xFF), so trailing "slots" below top_ptr are really payload
+     * bytes and must never be written; only invalid slots at or above top_ptr
+     * are genuine log territory. A torn DATA block, in turn, implies its lock
+     * committed first — that is the newest-slot data_torn() check above. */
+    {
+        int zeroed = 0;
+        for (slot = lo; slot-- > 0; ) {
+            uint32_t addr = lt - (slot + 1) * rs;
+            uint16_t i; int all_zero = 1, all_ff = 1;
+            if (m->hal.read(m->hal.ctx, addr, rec_buf, rs) != 0) return MLA_E_IO;
+            if (mla_log_parse(rec_buf, &rec)) break;   /* first valid — clean */
+            if (addr < top) continue;                  /* data bytes, not a slot */
+            /* Torn = neither a valid record, nor all-0xFF (free / the residual
+             * gap of a full file), nor all-0x00 (already discarded). */
+            for (i = 0; i < rs; i++) if (rec_buf[i] != 0x00) { all_zero = 0; break; }
+            for (i = 0; i < rs; i++) if (rec_buf[i] != 0xFF) { all_ff = 0; break; }
+            if (!all_zero && !all_ff) {                /* torn slot → neutralise */
+                uint8_t z[MLA_LOG_REC_SIZE]; memset(z, 0, rs);
+                if (m->hal.write(m->hal.ctx, addr, z, rs) != 0) return MLA_E_IO;
+                zeroed = 1;
+            }
+        }
+        if (zeroed) m->hal.sync(m->hal.ctx);
+    }
+
     m->top_ptr = top;
     m->count   = count;
     return MLA_OK;
