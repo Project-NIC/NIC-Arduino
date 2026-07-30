@@ -18,7 +18,7 @@
 
 DMD is a multiplatform compression protocol for small data packets from weather stations, electricity meters, GPS trackers, and other embedded devices. It is designed for transmission over bandwidth-limited technologies such as LoRa.
 
-The protocol is fully functional on the ATmega328 controller and requires no large dictionaries or lookup tables in memory. Each packet is compressed independently — using adaptive selection of the best method from five candidates.
+The protocol is fully functional on the ATmega328 controller and requires no large dictionaries or lookup tables in memory. Each packet is compressed with no shared dictionary and no transmitted table — using adaptive selection of the best method from five candidates. **The delta stage is the exception, and it matters for the transport:** a packet is delta-coded against the *previous* packet, and the encoder resynchronises with a keyframe every 7th packet (`DMD_KEYFRAME_EVERY`). A lost packet therefore costs up to six more. Over a reliable link this is free; a lossy link must either force keyframes on send or carry a stateless frame instead.
 
 ---
 

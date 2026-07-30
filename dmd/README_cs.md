@@ -20,7 +20,7 @@
 
 DMD je multiplatformní kompresní protokol pro malé pakety dat z meteostanic, elektroměrů, GPS trackerů a dalších embedded zařízení. Je navržen pro přenos přes technologie s omezenou šířkou pásma, jako je LoRa.
 
-Protokol je plně funkční na kontroléru ATmega328 a nevyžaduje žádné velké slovníky ani vyhledávací tabulky v paměti. Každý paket je komprimován nezávisle — adaptivním výběrem nejlepší metody z pěti kandidátů.
+Protokol je plně funkční na kontroléru ATmega328 a nevyžaduje žádné velké slovníky ani vyhledávací tabulky v paměti. Každý paket je komprimován bez sdíleného slovníku a bez přenášené tabulky — adaptivním výběrem nejlepší metody z pěti kandidátů. **Výjimkou je delta, a pro přenos je to podstatné:** paket se kóduje rozdílem proti *předchozímu* paketu a enkodér se resynchronizuje keyframem každý 7. paket (`DMD_KEYFRAME_EVERY`). Ztráta jednoho paketu tak stojí až šest dalších. Na spolehlivé lince to nic nestojí; ztrátová linka musí buď vynutit keyframe při odesílání, nebo nést bezstavový rámec.
 
 ---
 
