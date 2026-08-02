@@ -289,6 +289,13 @@ bytes, or for several things at once (e.g. high byte = section/rotation, low byt
 = a sub-second tick for sampling well above 1 Hz). Set it to 0 when unused. The
 single `flags` byte packs the `compressed` bit and the `kf_back` distance (see §4).
 
+**It is a placement, not a full timestamp.** The two bytes hold a *sample index* — 0..127
+for a 128/s channel, 0..8191 for an 8192/s one — and wherever the rate is a power of two,
+moving that index onto a finer grid is a shift: nothing stores an exact fraction of a
+second and nothing divides to read one back. A caller whose sub-second position needs more
+than 16 bits splits it in two — the coarse half places the record here, the fine half rides
+in the payload, which for such a channel is where the exact moment belongs anyway.
+
 ### 5.1 Record states (no flags field)
 
 A slot is interpreted purely from its bytes:

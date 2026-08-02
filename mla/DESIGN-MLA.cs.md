@@ -276,6 +276,13 @@ jako dva nezávislé bajty, nebo na víc věcí naráz (např. horní bajt = sek
 dolní bajt = podsekundový tik pro vzorkování výrazně nad 1 Hz). Když ho nevyužiješ,
 nastav 0. Jediný bajt `flags` pakuje bit `compressed` a vzdálenost `kf_back` (viz §4).
 
+**Je to umístění, ne plná časová značka.** Ty dva bajty nesou *index vzorku* — 0..127 pro
+kanál se 128/s, 0..8191 pro 8192/s — a všude, kde je rychlost mocninou dvojky, je převod
+toho indexu na jemnější mřížku posun: nic neukládá přesný zlomek sekundy a nic nedělí, aby
+ho přečetlo zpět. Volající, jehož podsekundová poloha potřebuje víc než 16 bitů, ji rozdělí
+na dvě — hrubší půlka umístí záznam sem, jemnější jede v payloadu, kam u takového kanálu
+přesný okamžik stejně patří.
+
 ### 5.1 Stavy záznamu (žádné pole flags)
 
 Slot se interpretuje čistě z jeho bajtů:
