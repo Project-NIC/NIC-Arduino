@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueOut.svg" width="200"/>
+</p>
+
 # NIC-GLUE-OUT
 
 **Connection layer between the NIC libraries — DMD, KSF, MLA, VDE — on the read / export side.**

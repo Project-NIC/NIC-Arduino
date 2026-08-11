@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICMSEED.svg" width="200"/>
+</p>
+
 # NIC-MSEED
 
 *[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*

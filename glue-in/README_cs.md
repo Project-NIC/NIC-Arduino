@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueIn.svg" width="200"/>
+</p>
+
 # NIC-GLUE-IN
 
 **Spojovací vrstva mezi knihovnami NIC — DMD, KSF, MLA, VDE — na vstupní (zápisové) straně.**

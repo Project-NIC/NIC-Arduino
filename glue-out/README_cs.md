@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueOut.svg" width="200"/>
+</p>
+
 # NIC-GLUE-OUT
 
 **Spojovací vrstva mezi knihovnami NIC — DMD, KSF, MLA, VDE — na výstupní (čtecí / exportní) straně.**

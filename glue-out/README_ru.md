@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueOut.svg" width="200"/>
+</p>
+
 # NIC-GLUE-OUT
 
 **Связующий слой между библиотеками NIC — DMD, KSF, MLA, VDE — на стороне чтения / экспорта.**

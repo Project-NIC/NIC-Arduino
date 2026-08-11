@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICMSEED.svg" width="200"/>
+</p>
+
 # NIC-MSEED
 
 **A standalone NIC data library — turn a NIC-MLA log into miniSEED (Steim-1 / Steim-2).**

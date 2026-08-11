@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICIAGA.svg" width="200"/>
+</p>
+
 # NIC-IAGA
 
 **Самостоятельная библиотека данных NIC — преобразование магнитометрического лога NIC-MLA в IAGA-2002.**

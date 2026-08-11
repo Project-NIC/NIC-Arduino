@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueIn.svg" width="200"/>
+</p>
+
 # NIC-GLUE-IN
 
 **Связующий слой между библиотеками NIC — DMD, KSF, MLA, VDE — на входной стороне (запись).**

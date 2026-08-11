@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICIAGA.svg" width="200"/>
+</p>
+
 # NIC-IAGA
 
 **Samostatná NIC datová knihovna — převod magnetometrického NIC-MLA logu do IAGA-2002.**

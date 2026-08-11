@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICIAGA.svg" width="200"/>
+</p>
+
 # NIC-IAGA
 
 **A standalone NIC data library — turn a NIC-MLA magnetometer log into IAGA-2002.**

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="NICGlueIn.svg" width="200"/>
+</p>
+
 # NIC-GLUE-IN
 
 **Connection layer between the NIC libraries — DMD, KSF, MLA, VDE — on the ingest / write side.**
