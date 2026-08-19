@@ -10,8 +10,6 @@
 
 **The data side of NIC in one place: the MLA log format, its optional add-ons, the glue, the seismo export, and the VDE viewer.**
 
-*[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
-
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)

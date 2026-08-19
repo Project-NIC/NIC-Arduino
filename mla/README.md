@@ -2,8 +2,6 @@
   <img src="NICMLA.svg" width="200"/>
 </p>
 
-*[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
-
 ---
 
 # NIC-MLA
@@ -20,7 +18,7 @@ file**, readable across platforms from an 8-bit microcontroller to a PC.
 One file, one format, one way to read it — pull the card out of the device, plug
 it into a computer, and you have everything. No zoo of formats.
 
-> Full format specification: **[`DESIGN-MLA.md`](DESIGN-MLA.md)** *([cs](DESIGN-MLA.cs.md) · [ru](DESIGN-MLA.ru.md))* · release notes: [`RELEASE_NOTES_v1.1.md`](RELEASE_NOTES_v1.1.md)
+> Full format specification: **[`DESIGN-MLA.md`](DESIGN-MLA.md)** · release notes: [`RELEASE_NOTES_v1.1.md`](RELEASE_NOTES_v1.1.md)
 >
 > Logging several station types into one file (datalogger / repeater):
 > **[`DESIGN-MLA-datalogger.md`](DESIGN-MLA-datalogger.md)**

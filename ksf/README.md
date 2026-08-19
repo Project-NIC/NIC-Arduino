@@ -2,8 +2,6 @@
   <img src="NICKSF.svg" width="200"/>
 </p>
 
-*[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
-
 ---
 
 # NIC-KSF — Kolmogorov Shannon Feistel
@@ -139,7 +137,6 @@ avr-gcc -std=c99 -mmcu=atmega328p -Os -Isrc -o nic_ksf.elf src/nic_ksf_32.c
 | `tests/test_ksf.c` | C test suite |
 | `tests/test_ksf.py` | Python test suite |
 | `Makefile` | Build for PC and AVR |
-| `README_cs.md`, `README_ru.md` | Translated documentation (cs, ru) |
 ---
 
 ## License

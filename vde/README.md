@@ -4,9 +4,6 @@
 
 # Volkov Data Ecosystem
 
-*[English](README.md) · [Čeština](README_cs.md) · [Русский](README_ru.md)*
-
-
 A cross-platform, two-pane file manager in the style of **Volkov Commander**,
 written in Python on **prompt_toolkit**. It browses the local filesystem and
 steps *inside* **NIC-MLA** containers, showing each logged record as a file.
