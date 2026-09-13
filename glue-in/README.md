@@ -43,7 +43,7 @@ these seams. There are only a handful, and getting them right is the whole job:
 | **Keyframe** | DMD keyframe = sample number `0` (3-bit field; value `7` reserved for protocol version) | glue reads it back off the DMD blob (`blob[0] & 0x07 == 0` ⇒ keyframe = DMD sample 0) and tags the record accordingly |
 | **Keyframe distance** | MLA log has a `kf_back` field it only carries; readers need to find the owning keyframe | glue sets `kf_back` = records back to the owning keyframe (`0` on the keyframe) |
 | **Keyframe cadence hint** | MLA prefix has `keyframe_intv` (metadata only); DMD cadence is internal (`DMD_KEYFRAME_EVERY`) | base library default `0`; glue seeds DMD's cadence so the caller never types it (overridable) |
-| **`subsec` (two opaque bytes)** | MLA log carries a `subsec` field — two opaque bytes the glue owns (sub-**sec**ond time *and/or* sub-**sec**tion / rotation); MLA gives it no meaning | glue passes `subsec` through unchanged on `log_raw` / `CompressedChannel.log` (the caller composes the 16-bit value or the two bytes) |
+| **`subsec` (two opaque bytes)** | MLA log carries a `subsec` field — two opaque bytes the glue owns (sub-**sec**ond time *and/or* sub-**sec**tion / rotation); MLA gives it no meaning | glue passes `subsec` through unchanged on `log_raw` / `CompressedChannel.log` (the caller composes the 16-bit value or the two bytes); in a NIC station the caller writes the **frame index** — see [time options](#1-where-the-timestamp-comes-from) |
 | **Packet width** | DMD requires every packet in a stream to be the *same* width (delta) | width belongs to the **channel** (4..255 B), enforced on every `log()`; different channels may differ |
 | **Stream identity** | a stream's identity in the file *is* its MLA station index; MLA needs no other per-record tag | the reader tells streams apart by station and reads `kf_back` to find each stream's keyframe; one stateless DMD compressor + N tiny per-stream contexts (`ChannelBank`) keep the deltas straight |
 | **Rotation → keyframe** | MLA v1.1 (2b) surfaces a rotation event + `will_rotate()` so each rotated file can be independently decodable | `GlueArchiveLogger` + `ChannelBank` wire this end to end: the stream that *triggers* the rollover checks `will_rotate(pkt_len+1)` **before** compressing and resets so that record is a keyframe (a delta never crosses a file boundary); every *other* stream is reset by `on_rotate` → `reset_all()`. So the first record of each stream in every file is a keyframe (moot for RAW data) |
@@ -139,6 +139,15 @@ is your choice:
 > `recv(blob)` → `DmdDecoder.decompress(blob)` → `packet` →
 > `t = int.from_bytes(packet[:4], "little")` → `data = packet[4:]` →
 > `MlaCore.append(t, station, data, compressed=…, kf_back=…)`.
+
+**The sub-second half goes in `subsec`, as an index — not as a fraction.** The
+whole second is `timestamp`; the position inside it is the frame index on a
+power-of-two grid, written straight into `subsec` (a NIC station: `timestamp` =
+the absolute second, `subsec` = the frame). Nothing stores a fraction of a second
+and nothing divides to read one back — an exporter turns the index into a time as
+`subsec / rate`, exactly, because the rate is a power of two. Where one frame
+carries several samples, the finer position stays in the data block, which the
+schema already describes.
 
 ### 2. Compressed at rest, or only on the wire?
 

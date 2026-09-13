@@ -76,6 +76,29 @@ Each `(station, field)` becomes one miniSEED channel. The converter assumes an
 evenly-sampled, contiguous series per channel (true for synchronised acquisition,
 e.g. **NIC-Quake**); gap-splitting is left to a later pass.
 
+## How the time headers are computed
+
+**Anchor and index — the record time is never read per sample.** Only the *first*
+record of a channel is read for time: `t0 = timestamp + subsec / sample_rate_hz`.
+That is the one place `subsec` is used; it pins the phase of the first sample and
+nothing else. Every miniSEED record then gets `t0 + i / sample_rate_hz`, where `i`
+is the number of samples already emitted — computed from `t0` each time, never
+from the previous header, so nothing accumulates. The whole seconds go to BTIME's
+calendar fields, the remainder to BTIME's last field, and the rate goes in as the
+SEED `(factor, multiplier)` pair: 128 Hz is `(128, 1)`, exact.
+
+`subsec_unit="index"` is what a NIC station writes — `subsec` is the frame index
+on a power-of-two grid, so `subsec / sample_rate_hz` is an exact binary fraction.
+`"ms"` is there for a log stamped in milliseconds; a callable takes anything else.
+
+**BTIME's fraction is 0,0001 s, and that is the export's floor.** At 128 Hz a
+sample is 7812,5 µs, so only every eighth sample boundary lands on a whole 100 µs
+and a record boundary falls where Steim packing puts it — a record start is
+therefore rounded, by up to 50 µs. The `time correction` field is in the same
+0,0001 s unit and buys nothing. This is SEED 2.4; miniSEED v3 carries a nanosecond
+start time. **The archive keeps the full resolution — the loss is in the SEED
+header, not in the `.mla`.**
+
 ## StationXML metadata sidecar
 
 miniSEED carries the *data*; FDSN tools also need the *metadata* — station

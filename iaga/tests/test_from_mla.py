@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import nic_iaga  # noqa: E402  — puts third_party (nic_mla, nic_dmd) on sys.path
 from nic_iaga import export_mla_to_iaga, parse_iaga2002, NOT_OBSERVED
+from nic_iaga.from_mla import IagaExporter
 from nic_mla import MlaCore, MlaPosixHAL
 from mla_schema import MlaSchemaBuilder, MlaStationTable, dl_ident
 from nic_dmd import DmdEncoder
@@ -96,6 +97,16 @@ with tempfile.TemporaryDirectory() as td:
           all(abs(a[i] - b[i]) < 0.005 for a, b in zip(rows1, rows2)
               for i in (1, 2, 3)))
     check("variation data type declared", hdr2["Data Type"] == "variation")
+
+    # subsec = the frame index on a power-of-two grid (what a NIC station writes)
+    ex = IagaExporter(sample_rate_hz=16)
+    check("index places the frame exactly", ex._subsec(5) == 5 / 16.0)
+    check("subsec 0 needs no rate", IagaExporter()._subsec(0) == 0.0)
+    try:
+        IagaExporter()._subsec(5)
+        check("a non-zero index without a rate is refused", False)
+    except ValueError:
+        check("a non-zero index without a rate is refused", True)
 
 print(f"\n{_p} passed, {_f} failed")
 sys.exit(1 if _f else 0)

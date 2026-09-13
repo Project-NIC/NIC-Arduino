@@ -42,6 +42,18 @@
   per-station DMD replay, X/Y/Z(/F) field auto-detect (or named), calibration, station
   metadata from the MLA STATION table.
 
+## Time
+
+**Every row carries its own stamp** — IAGA-2002 is a text table, not an anchored
+series, so unlike NIC-MSEED the time is read from each record: `timestamp` is the
+whole second, `subsec` places it inside that second. `subsec_unit="index"` is the
+default and what a NIC station writes — `subsec` is the frame index on a
+power-of-two grid, and the fraction is `subsec / sample_rate_hz`, exact. An
+observatory stream stamped on whole seconds leaves `subsec` at 0 and needs no
+rate; `"ms"` is there for a log stamped in milliseconds, a callable for anything
+else. **The format writes the stamp to a millisecond** (`hh:mm:ss.sss`) — that is
+IAGA-2002, and it is the floor of this export, not of the archive.
+
 ## Quick start
 
 ```python

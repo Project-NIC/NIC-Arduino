@@ -8,7 +8,9 @@ when the record's ``compressed`` bit is set), groups them into per-station,
 per-SCHEMA-field channels, and writes one miniSEED byte stream.
 
 What MLA carries vs what miniSEED needs:
-  • MLA `timestamp` (u32 s) + `subsec` (u16) → the channel's start time.
+  • MLA `timestamp` (u32 s) + `subsec` (u16) → the channel's start time. Only the
+    FIRST record of a channel is read for time; every later sample's time is
+    start + i / sample_rate_hz — anchor and index, never a stamp per sample.
   • MLA SCHEMA DATA fields                  → one miniSEED channel each (raw counts;
     calibration `offset`/`exp10` stay out — that belongs in StationXML metadata).
   • MLA STATION table                       → SEED network/station/location codes.
@@ -46,9 +48,11 @@ class MseedExporter:
     version        — STEIM1 or STEIM2 (default STEIM2).
     reclen         — miniSEED record length in bytes (power of two, default 512).
     subsec_unit    — how to read MLA's `subsec` into a sub-second fraction:
-                     "index" → subsec / sample_rate_hz (sample number in the second),
-                     "ms"    → subsec / 1000,
-                     "tick"  → subsec / 65536,
+                     "index" → subsec / sample_rate_hz (sample number in the second)
+                               — what a NIC station writes: `subsec` is the frame
+                               index on the station's power-of-two grid, so the
+                               division is exact,
+                     "ms"    → subsec / 1000, for a log stamped in milliseconds,
                      or a callable subsec -> seconds.
     channel_map    — {schema_field_name: seed_channel_code}; else derived.
     station_map    — {mla_station_index: (network, station, location)} or
@@ -81,8 +85,6 @@ class MseedExporter:
             return subsec / self.rate
         if u == "ms":
             return subsec / 1000.0
-        if u == "tick":
-            return subsec / 65536.0
         raise ValueError(f"unknown subsec_unit {u!r}")
 
     def _station_codes(self, idx: int, stations) -> tuple[str, str, str]:

@@ -9,8 +9,10 @@ schema calibration — ``physical = (raw + offset) * 10**exp10`` — so the outp
 is **nT, not counts** (unlike miniSEED, where counts stay raw and calibration
 lives in StationXML), and writes one IAGA-2002 text per station.
 
-One MLA record = one sample row (the Gauss slow-poll cadence: each record
-carries one X/Y/Z[/F] reading with its own timestamp).
+One MLA record = one sample row (the Gauss cadence: each record carries one
+X/Y/Z[/F] reading with its own timestamp). Unlike NIC-MSEED, every row's time is
+computed from its own record — IAGA-2002 is a text table of stamped rows, not an
+anchored series — and the format writes the stamp to a millisecond.
 """
 from __future__ import annotations
 
@@ -41,16 +43,23 @@ def _find(fields, names, override):
 class IagaExporter:
     """Convert a NIC-MLA container to IAGA-2002 (one text file per station).
 
-    subsec_unit — same options as NIC-MSEED ("ms" default here: the Gauss
-                  housekeeping stream stamps milliseconds, not sample index).
+    sample_rate_hz — frame rate the records sit on. Needed only when a record
+                  actually carries a non-zero `subsec` under subsec_unit="index";
+                  an observatory stream stamped on whole seconds leaves `subsec`
+                  at 0 and needs no rate.
+    subsec_unit — same options as NIC-MSEED: "index" (the default — what a NIC
+                  station writes), "ms" for a log stamped in milliseconds, or a
+                  callable subsec -> seconds.
     x/y/z/f     — SCHEMA field names when auto-detect shouldn't guess.
     stations    — {mla_station_index: dict of write_iaga2002 kwargs}
                   (iaga_code, latitude, longitude, elevation_m, ...); a station
                   missing here gets code f"N{index:02d}" and zero coordinates.
     """
 
-    def __init__(self, *, subsec_unit="ms", x=None, y=None, z=None, f=None,
+    def __init__(self, *, sample_rate_hz: float | None = None,
+                 subsec_unit="index", x=None, y=None, z=None, f=None,
                  stations: dict | None = None, **iaga_kw):
+        self.rate = float(sample_rate_hz) if sample_rate_hz else None
         self.subsec_unit = subsec_unit
         self.names = (x, y, z, f)
         self.stations = dict(stations or {})
@@ -60,7 +69,16 @@ class IagaExporter:
         u = self.subsec_unit
         if callable(u):
             return float(u(subsec))
-        return {"ms": subsec / 1000.0, "tick": subsec / 65536.0}[u]
+        if u == "index":
+            if not subsec:
+                return 0.0
+            if not self.rate:
+                raise ValueError('subsec_unit="index" needs sample_rate_hz — a '
+                                 f"record carries subsec={subsec}")
+            return subsec / self.rate
+        if u == "ms":
+            return subsec / 1000.0
+        raise ValueError(f"unknown subsec_unit {u!r}")
 
     def export(self, mla_path: str, out_path: str) -> dict:
         """Write one file per station: ``out_path`` for the first, then
